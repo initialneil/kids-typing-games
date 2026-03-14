@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dragon & Princess Runner!</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+canvas { display: block; margin: 0 auto; }
+#ui-overlay {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+}
+#back-btn {
+  position: absolute;
+  top: 12px; left: 12px;
+  background: rgba(255,255,255,0.85);
+  border: 3px solid #e91e63;
+  border-radius: 12px;
+  padding: 8px 18px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #e91e63;
+  cursor: pointer;
+  pointer-events: all;
+  text-decoration: none;
+  z-index: 10;
+}
+#back-btn:hover { background: #fce4ec; }
+</style>
+</head>
+<body>
+<a id="back-btn" href="index.html">&#8592; Home</a>
+<canvas id="gameCanvas"></canvas>
+<script>
+// ============================================================
+// Dragon & Princess Runner - A game for little kids
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+// -- Constants --
+const GROUND_HEIGHT_RATIO = 0.18;
+const GRAVITY = 0.45;
+const JUMP_VELOCITY = -11;
+const OBSTACLE_SPEED = 2.5;
+const OBSTACLE_INTERVAL_MIN = 2000;
+const OBSTACLE_INTERVAL_MAX = 4000;
+
+// -- Game State --
+let state = 'title'; // title, intro, playing
+let introTimer = 0;
+let introStartTime = 0;
+let score = 0;
+let lastObstacleTime = 0;
+let nextObstacleDelay = 3000;
+let deltaTime = 0;
+let lastFrameTime = 0;
+
+// -- Ground --
+function groundY() { return canvas.height - canvas.height * GROUND_HEIGHT_RATIO; }
+
+// -- Princess --
+const princess = {
+  x: -60, y: 0, w: 30, h: 40,
+  vy: 0, jumping: false,
+  targetX: 150, legFrame: 0, legTimer: 0, flashTimer: 0
+};
+
+// -- Dragon --
+const dragon = {
+  x: -120, y: 0, w: 40, h: 50,
+  targetX: 80, legFrame: 0, legTimer: 0
+};
+
+// -- Obstacles --
+let obstacles = [];
+
+// -- Clouds --
+let clouds = [];
+function initClouds() {
+  clouds = [];
+  for (let i = 0; i < 6; i++) {
+    clouds.push({
+      x: Math.random() * canvas.width,
+      y: 40 + Math.random() * (groundY() * 0.4),
+      w: 60 + Math.random() * 80,
+      h: 25 + Math.random() * 20,
+      speed: 0.3 + Math.random() * 0.4
+    });
+  }
+}
+initClouds();
+
+// -- Grass tufts --
+let grassTufts = [];
+function initGrass() {
+  grassTufts = [];
+  for (let i = 0; i < 40; i++) {
+    grassTufts.push({
+      x: Math.random() * canvas.width,
+      h: 6 + Math.random() * 10
+    });
+  }
+}
+initGrass();
+
+// -- Particles (celebration) --
+let particles = [];
+
+// -- Popup texts --
+let popups = [];
+
+// ============================================================
+// Drawing helpers
+// ============================================================
+
+function drawRoundRect(x, y, w, h, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ============================================================
+// Draw Princess (pixel-art style)
+// ============================================================
+function drawPrincess(px, py) {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
+
+  // Flash effect
+  if (princess.flashTimer > 0) {
+    ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(princess.flashTimer * 10));
+  }
+
+  const bx = px, by = py;
+
+  // Dress / body - pink
+  ctx.fillStyle = '#ff69b4';
+  ctx.fillRect(bx - 12*s, by - 5*s, 24*s, 30*s);
+  // Dress flare
+  ctx.fillStyle = '#ff85c8';
+  ctx.beginPath();
+  ctx.moveTo(bx - 14*s, by + 25*s);
+  ctx.lineTo(bx + 14*s, by + 25*s);
+  ctx.lineTo(bx + 10*s, by + 10*s);
+  ctx.lineTo(bx - 10*s, by + 10*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head - peach
+  ctx.fillStyle = '#ffdab9';
+  ctx.beginPath();
+  ctx.arc(bx, by - 16*s, 10*s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hair - brown
+  ctx.fillStyle = '#8B4513';
+  ctx.fillRect(bx - 11*s, by - 26*s, 22*s, 8*s);
+  ctx.fillRect(bx - 12*s, by - 20*s, 4*s, 18*s);
+  ctx.fillRect(bx + 8*s, by - 20*s, 4*s, 18*s);
+
+  // Crown - yellow
+  ctx.fillStyle = '#FFD700';
+  ctx.fillRect(bx - 8*s, by - 30*s, 16*s, 5*s);
+  // Crown points
+  ctx.beginPath();
+  ctx.moveTo(bx - 8*s, by - 30*s);
+  ctx.lineTo(bx - 6*s, by - 38*s);
+  ctx.lineTo(bx - 4*s, by - 30*s);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bx - 2*s, by - 30*s);
+  ctx.lineTo(bx, by - 36*s);
+  ctx.lineTo(bx + 2*s, by - 30*s);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bx + 4*s, by - 30*s);
+  ctx.lineTo(bx + 6*s, by - 38*s);
+  ctx.lineTo(bx + 8*s, by - 30*s);
+  ctx.fill();
+
+  // Crown gems
+  ctx.fillStyle = '#e91e63';
+  ctx.beginPath(); ctx.arc(bx - 6*s, by - 34*s, 1.5*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx, by - 33*s, 1.5*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + 6*s, by - 34*s, 1.5*s, 0, Math.PI*2); ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(bx - 4*s, by - 17*s, 2*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + 4*s, by - 17*s, 2*s, 0, Math.PI*2); ctx.fill();
+
+  // Smile
+  ctx.strokeStyle = '#e91e63';
+  ctx.lineWidth = 1.5*s;
+  ctx.beginPath();
+  ctx.arc(bx, by - 13*s, 4*s, 0.1 * Math.PI, 0.9 * Math.PI);
+  ctx.stroke();
+
+  // Legs (animated)
+  ctx.fillStyle = '#ffdab9';
+  if (princess.legFrame === 0) {
+    ctx.fillRect(bx - 7*s, by + 24*s, 5*s, 12*s);
+    ctx.fillRect(bx + 2*s, by + 24*s, 5*s, 12*s);
+  } else {
+    ctx.fillRect(bx - 9*s, by + 24*s, 5*s, 12*s);
+    ctx.fillRect(bx + 4*s, by + 24*s, 5*s, 12*s);
+  }
+
+  // Shoes - pink
+  ctx.fillStyle = '#ff1493';
+  if (princess.legFrame === 0) {
+    ctx.fillRect(bx - 8*s, by + 35*s, 7*s, 3*s);
+    ctx.fillRect(bx + 1*s, by + 35*s, 7*s, 3*s);
+  } else {
+    ctx.fillRect(bx - 10*s, by + 35*s, 7*s, 3*s);
+    ctx.fillRect(bx + 3*s, by + 35*s, 7*s, 3*s);
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// Draw Dragon (pixel-art style)
+// ============================================================
+function drawDragon(dx, dy) {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
+  const bx = dx, by = dy;
+
+  // Body - green
+  ctx.fillStyle = '#2ecc71';
+  ctx.fillRect(bx - 16*s, by - 5*s, 32*s, 28*s);
+
+  // Belly - lighter
+  ctx.fillStyle = '#a8e6cf';
+  ctx.fillRect(bx - 10*s, by, 20*s, 18*s);
+
+  // Tail - zigzag
+  ctx.fillStyle = '#27ae60';
+  ctx.beginPath();
+  ctx.moveTo(bx - 16*s, by + 10*s);
+  ctx.lineTo(bx - 28*s, by + 2*s);
+  ctx.lineTo(bx - 22*s, by + 12*s);
+  ctx.lineTo(bx - 34*s, by + 6*s);
+  ctx.lineTo(bx - 28*s, by + 16*s);
+  ctx.lineTo(bx - 16*s, by + 20*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tail spikes
+  ctx.fillStyle = '#e67e22';
+  ctx.beginPath();
+  ctx.moveTo(bx - 30*s, by + 4*s);
+  ctx.lineTo(bx - 33*s, by - 2*s);
+  ctx.lineTo(bx - 26*s, by + 7*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#2ecc71';
+  ctx.beginPath();
+  ctx.arc(bx + 4*s, by - 16*s, 12*s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Snout
+  ctx.fillStyle = '#27ae60';
+  ctx.fillRect(bx + 10*s, by - 18*s, 10*s, 8*s);
+
+  // Nostril - puff of smoke
+  ctx.fillStyle = '#95a5a6';
+  ctx.globalAlpha = 0.5;
+  const puffOff = Math.sin(Date.now() / 300) * 3*s;
+  ctx.beginPath(); ctx.arc(bx + 22*s + puffOff, by - 17*s, 3*s, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(bx + 26*s + puffOff*1.2, by - 19*s, 2*s, 0, Math.PI*2); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Eye - orange
+  ctx.fillStyle = '#f39c12';
+  ctx.beginPath(); ctx.arc(bx + 6*s, by - 19*s, 4*s, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(bx + 7*s, by - 19*s, 2*s, 0, Math.PI*2); ctx.fill();
+
+  // Horns
+  ctx.fillStyle = '#e67e22';
+  ctx.beginPath();
+  ctx.moveTo(bx - 2*s, by - 26*s);
+  ctx.lineTo(bx - 6*s, by - 36*s);
+  ctx.lineTo(bx + 2*s, by - 28*s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(bx + 6*s, by - 26*s);
+  ctx.lineTo(bx + 3*s, by - 35*s);
+  ctx.lineTo(bx + 10*s, by - 27*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wings
+  const wingFlap = Math.sin(Date.now() / 200) * 5*s;
+  ctx.fillStyle = '#1abc9c';
+  ctx.beginPath();
+  ctx.moveTo(bx - 8*s, by - 5*s);
+  ctx.lineTo(bx - 30*s, by - 30*s + wingFlap);
+  ctx.lineTo(bx - 20*s, by - 10*s + wingFlap * 0.5);
+  ctx.lineTo(bx - 35*s, by - 20*s + wingFlap);
+  ctx.lineTo(bx - 14*s, by + 5*s);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wing membrane lines
+  ctx.strokeStyle = '#16a085';
+  ctx.lineWidth = 1*s;
+  ctx.beginPath();
+  ctx.moveTo(bx - 8*s, by - 2*s);
+  ctx.lineTo(bx - 26*s, by - 25*s + wingFlap);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(bx - 10*s, by + 2*s);
+  ctx.lineTo(bx - 30*s, by - 16*s + wingFlap);
+  ctx.stroke();
+
+  // Legs (animated)
+  ctx.fillStyle = '#27ae60';
+  if (dragon.legFrame === 0) {
+    ctx.fillRect(bx - 10*s, by + 22*s, 7*s, 14*s);
+    ctx.fillRect(bx + 4*s, by + 22*s, 7*s, 14*s);
+  } else {
+    ctx.fillRect(bx - 13*s, by + 22*s, 7*s, 14*s);
+    ctx.fillRect(bx + 7*s, by + 22*s, 7*s, 14*s);
+  }
+
+  // Claws
+  ctx.fillStyle = '#e67e22';
+  if (dragon.legFrame === 0) {
+    drawClaw(bx - 10*s, by + 35*s, s);
+    drawClaw(bx + 4*s, by + 35*s, s);
+  } else {
+    drawClaw(bx - 13*s, by + 35*s, s);
+    drawClaw(bx + 7*s, by + 35*s, s);
+  }
+
+  // Back spikes
+  ctx.fillStyle = '#e67e22';
+  for (let i = 0; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(bx - 10*s + i*8*s, by - 5*s);
+    ctx.lineTo(bx - 7*s + i*8*s, by - 14*s);
+    ctx.lineTo(bx - 4*s + i*8*s, by - 5*s);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawClaw(cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx - 2*s, cy + 4*s);
+  ctx.lineTo(cx + 2*s, cy + 1*s);
+  ctx.lineTo(cx + 1*s, cy + 5*s);
+  ctx.lineTo(cx + 5*s, cy + 1*s);
+  ctx.lineTo(cx + 4*s, cy + 5*s);
+  ctx.lineTo(cx + 7*s, cy);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ============================================================
+// Draw Obstacles
+// ============================================================
+function drawObstacle(obs) {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
+  const gy = groundY();
+
+  if (obs.type === 'rock') {
+    // Stacked grey rocks
+    ctx.fillStyle = '#7f8c8d';
+    drawRoundRect(obs.x - 15*s, gy - 20*s, 30*s, 20*s, 5*s, '#7f8c8d');
+    drawRoundRect(obs.x - 10*s, gy - 30*s, 20*s, 14*s, 4*s, '#95a5a6');
+    drawRoundRect(obs.x - 5*s, gy - 36*s, 12*s, 10*s, 3*s, '#bdc3c7');
+    // Highlights
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(obs.x - 3*s, gy - 34*s, 4*s, 3*s);
+  } else if (obs.type === 'cactus') {
+    // Main stem
+    ctx.fillStyle = '#27ae60';
+    ctx.fillRect(obs.x - 6*s, gy - 45*s, 12*s, 45*s);
+    // Left arm
+    ctx.fillRect(obs.x - 18*s, gy - 35*s, 14*s, 8*s);
+    ctx.fillRect(obs.x - 18*s, gy - 35*s, 8*s, -12*s);
+    // Right arm
+    ctx.fillRect(obs.x + 4*s, gy - 28*s, 14*s, 8*s);
+    ctx.fillRect(obs.x + 12*s, gy - 28*s, 8*s, -10*s);
+    // Highlights
+    ctx.fillStyle = '#2ecc71';
+    ctx.fillRect(obs.x - 3*s, gy - 43*s, 3*s, 40*s);
+    // Flower on top
+    ctx.fillStyle = '#e74c3c';
+    ctx.beginPath(); ctx.arc(obs.x, gy - 47*s, 4*s, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#f1c40f';
+    ctx.beginPath(); ctx.arc(obs.x, gy - 47*s, 2*s, 0, Math.PI*2); ctx.fill();
+  } else if (obs.type === 'log') {
+    // Brown log
+    ctx.fillStyle = '#8B4513';
+    drawRoundRect(obs.x - 25*s, gy - 16*s, 50*s, 16*s, 6*s, '#8B4513');
+    // Rings
+    ctx.strokeStyle = '#A0522D';
+    ctx.lineWidth = 1.5*s;
+    ctx.beginPath(); ctx.arc(obs.x - 22*s, gy - 8*s, 5*s, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(obs.x + 22*s, gy - 8*s, 5*s, 0, Math.PI*2); ctx.stroke();
+    // Bark detail
+    ctx.fillStyle = '#A0522D';
+    ctx.fillRect(obs.x - 15*s, gy - 14*s, 30*s, 2*s);
+    ctx.fillRect(obs.x - 10*s, gy - 8*s, 20*s, 2*s);
+  }
+}
+
+function getObstacleHitbox(obs) {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
+  const gy = groundY();
+  if (obs.type === 'rock') return { x: obs.x - 12*s, y: gy - 30*s, w: 24*s, h: 30*s };
+  if (obs.type === 'cactus') return { x: obs.x - 6*s, y: gy - 45*s, w: 12*s, h: 45*s };
+  if (obs.type === 'log') return { x: obs.x - 22*s, y: gy - 16*s, w: 44*s, h: 16*s };
+  return { x: obs.x, y: gy - 20*s, w: 20*s, h: 20*s };
+}
+
+// ============================================================
+// Draw background
+// ============================================================
+function drawBackground() {
+  const gy = groundY();
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, gy);
+  grad.addColorStop(0, '#0f0c29');
+  grad.addColorStop(0.5, '#302b63');
+  grad.addColorStop(1, '#24243e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, gy);
+
+  // Stars
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  for (let i = 0; i < 30; i++) {
+    const sx = (i * 137.5 + 50) % canvas.width;
+    const sy = (i * 97.3 + 20) % (gy * 0.5);
+    const sr = 1 + (i % 3);
+    ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI*2); ctx.fill();
+  }
+
+  // Clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  for (const c of clouds) {
+    drawRoundRect(c.x, c.y, c.w, c.h, c.h/2, 'rgba(255,255,255,0.2)');
+    drawRoundRect(c.x + c.w*0.2, c.y - c.h*0.3, c.w*0.6, c.h*0.6, c.h*0.3, 'rgba(255,255,255,0.15)');
+  }
+
+  // Ground
+  const groundGrad = ctx.createLinearGradient(0, gy, 0, canvas.height);
+  groundGrad.addColorStop(0, '#2ecc71');
+  groundGrad.addColorStop(0.3, '#27ae60');
+  groundGrad.addColorStop(1, '#1a7a42');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, gy, canvas.width, canvas.height - gy);
+
+  // Ground line
+  ctx.strokeStyle = '#1e8449';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(canvas.width, gy); ctx.stroke();
+
+  // Grass tufts
+  ctx.fillStyle = '#2ecc71';
+  for (const g of grassTufts) {
+    ctx.beginPath();
+    ctx.moveTo(g.x - 4, gy);
+    ctx.lineTo(g.x, gy - g.h);
+    ctx.lineTo(g.x + 4, gy);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(g.x + 2, gy);
+    ctx.lineTo(g.x + 6, gy - g.h * 0.7);
+    ctx.lineTo(g.x + 8, gy);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+// ============================================================
+// Draw HUD
+// ============================================================
+function drawHUD() {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const fontSize = Math.max(18, 24 * scale);
+
+  // Title
+  ctx.fillStyle = '#fff';
+  ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('\u{1F409} Dragon and Princess! Press SPACE to jump!', canvas.width / 2, 35);
+
+  // Score
+  ctx.textAlign = 'right';
+  ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillText('Jumps: ' + score, canvas.width - 20, 35);
+
+  // Hearts (decorative)
+  ctx.textAlign = 'right';
+  ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
+  ctx.fillText('\u2764\uFE0F\u2764\uFE0F\u2764\uFE0F', canvas.width - 20, 62);
+}
+
+// ============================================================
+// Particles & Popups
+// ============================================================
+function spawnCelebration(x, y) {
+  const colors = ['#e74c3c', '#f39c12', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1c40f'];
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x: x + (Math.random() - 0.5) * 40,
+      y: y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: -2 - Math.random() * 4,
+      r: 4 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      life: 1.0
+    });
+  }
+  popups.push({
+    x: x, y: y - 50,
+    text: '\u{1F389} Yay! \u2B50\u2B50\u2B50',
+    life: 1.5
+  });
+}
+
+function spawnSadPopup(x, y) {
+  popups.push({
+    x: x, y: y - 50,
+    text: '\u{1F622} Oops!',
+    life: 1.2
+  });
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05;
+    p.life -= dt * 0.8;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function updatePopups(dt) {
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.y -= 40 * dt;
+    p.life -= dt;
+    if (p.life <= 0) popups.splice(i, 1);
+  }
+}
+
+function drawPopups() {
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const fontSize = Math.max(22, 30 * scale);
+  ctx.font = `bold ${fontSize}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  for (const p of popups) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 3;
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// Title screen
+// ============================================================
+function drawTitleScreen() {
+  drawBackground();
+
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const bigFont = Math.max(28, 48 * scale);
+  const medFont = Math.max(20, 30 * scale);
+  const smallFont = Math.max(16, 22 * scale);
+
+  // Semi-transparent overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${bigFont}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#f1c40f';
+  ctx.strokeStyle = '#e67e22';
+  ctx.lineWidth = 3;
+  ctx.strokeText('\u{1F409} Dragon & Princess Runner! \u{1F478}', canvas.width/2, canvas.height * 0.32);
+  ctx.fillText('\u{1F409} Dragon & Princess Runner! \u{1F478}', canvas.width/2, canvas.height * 0.32);
+
+  // Bouncing "press space"
+  const bounce = Math.sin(Date.now() / 400) * 8;
+  ctx.font = `bold ${medFont}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText('Press SPACE to Start!', canvas.width/2, canvas.height * 0.5 + bounce);
+
+  ctx.font = `${smallFont}px 'Segoe UI', sans-serif`;
+  ctx.fillStyle = '#bbb';
+  ctx.fillText('Press any key to jump over obstacles!', canvas.width/2, canvas.height * 0.62);
+
+  // Draw princess and dragon on title
+  const gy = groundY();
+  drawPrincess(canvas.width/2 + 40*scale, gy - 38*scale);
+  drawDragon(canvas.width/2 - 50*scale, gy - 48*scale);
+}
+
+// ============================================================
+// Game logic
+// ============================================================
+function startIntro() {
+  state = 'intro';
+  introStartTime = Date.now();
+  princess.x = -60;
+  princess.y = groundY() - 40;
+  dragon.x = -120;
+  dragon.y = groundY() - 50;
+  score = 0;
+  obstacles = [];
+  particles = [];
+  popups = [];
+}
+
+function startPlaying() {
+  state = 'playing';
+  lastObstacleTime = Date.now();
+  nextObstacleDelay = 2500;
+}
+
+function jump() {
+  if (!princess.jumping) {
+    princess.jumping = true;
+    princess.vy = JUMP_VELOCITY;
+  }
+}
+
+function spawnObstacle() {
+  const types = ['rock', 'cactus', 'log'];
+  obstacles.push({
+    x: canvas.width + 50,
+    type: types[Math.floor(Math.random() * types.length)],
+    passed: false,
+    hit: false
+  });
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+// ============================================================
+// Update
+// ============================================================
+function update(dt) {
+  const gy = groundY();
+  const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
+
+  // Update clouds
+  for (const c of clouds) {
+    c.x -= c.speed;
+    if (c.x + c.w < 0) {
+      c.x = canvas.width + 20;
+      c.y = 40 + Math.random() * (gy * 0.4);
+    }
+  }
+
+  if (state === 'intro') {
+    const elapsed = Date.now() - introStartTime;
+    const introDuration = 3000;
+    const t = Math.min(1, elapsed / introDuration);
+    // Ease out
+    const ease = 1 - Math.pow(1 - t, 3);
+
+    princess.x = -60 + (princess.targetX * s + 60) * ease;
+    princess.y = gy - 40 * s;
+    dragon.x = -120 + (dragon.targetX * s + 120) * ease;
+    dragon.y = gy - 50 * s;
+
+    // Animate legs during intro
+    princess.legTimer += dt;
+    dragon.legTimer += dt;
+    if (princess.legTimer > 0.15) { princess.legFrame = 1 - princess.legFrame; princess.legTimer = 0; }
+    if (dragon.legTimer > 0.18) { dragon.legFrame = 1 - dragon.legFrame; dragon.legTimer = 0; }
+
+    if (t >= 1) startPlaying();
+    return;
+  }
+
+  if (state === 'playing') {
+    // Princess physics
+    princess.x = princess.targetX * s;
+    if (princess.jumping) {
+      princess.vy += GRAVITY;
+      princess.y += princess.vy;
+      if (princess.y >= gy - 40 * s) {
+        princess.y = gy - 40 * s;
+        princess.jumping = false;
+        princess.vy = 0;
+      }
+    } else {
+      princess.y = gy - 40 * s;
+    }
+
+    // Dragon follows
+    dragon.x = dragon.targetX * s;
+    dragon.y = princess.y - 10 * s;
+
+    // Leg animation
+    princess.legTimer += dt;
+    dragon.legTimer += dt;
+    if (princess.legTimer > 0.15) { princess.legFrame = 1 - princess.legFrame; princess.legTimer = 0; }
+    if (dragon.legTimer > 0.18) { dragon.legFrame = 1 - dragon.legFrame; dragon.legTimer = 0; }
+
+    // Flash timer
+    if (princess.flashTimer > 0) princess.flashTimer -= dt;
+
+    // Obstacles
+    const speed = OBSTACLE_SPEED * s * 60;
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const obs = obstacles[i];
+      obs.x -= speed * dt;
+
+      if (obs.x < -60) {
+        obstacles.splice(i, 1);
+        continue;
+      }
+
+      // Collision check
+      const princessBox = {
+        x: princess.x - 10*s,
+        y: princess.y - 5*s,
+        w: 20*s,
+        h: 38*s
+      };
+      const obsBox = getObstacleHitbox(obs);
+
+      if (!obs.hit && rectsOverlap(princessBox, obsBox)) {
+        obs.hit = true;
+        princess.flashTimer = 1.0;
+        spawnSadPopup(obs.x, obs.y || gy - 30*s);
+        // Push obstacle away (no game over!)
+        obs.x = -100;
+      }
+
+      // Check if passed
+      if (!obs.passed && !obs.hit && obs.x + 30*s < princess.x - 15*s) {
+        obs.passed = true;
+        score++;
+        spawnCelebration(princess.x, princess.y - 20*s);
+      }
+    }
+
+    // Spawn new obstacles
+    if (Date.now() - lastObstacleTime > nextObstacleDelay) {
+      spawnObstacle();
+      lastObstacleTime = Date.now();
+      nextObstacleDelay = OBSTACLE_INTERVAL_MIN + Math.random() * (OBSTACLE_INTERVAL_MAX - OBSTACLE_INTERVAL_MIN);
+    }
+
+    // Update particles and popups
+    updateParticles(dt);
+    updatePopups(dt);
+  }
+}
+
+// ============================================================
+// Draw
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (state === 'title') {
+    drawTitleScreen();
+    return;
+  }
+
+  drawBackground();
+
+  // Draw obstacles
+  for (const obs of obstacles) {
+    drawObstacle(obs);
+  }
+
+  // Draw dragon then princess (princess in front)
+  drawDragon(dragon.x, dragon.y);
+  drawPrincess(princess.x, princess.y);
+
+  // Particles & popups
+  drawParticles();
+  drawPopups();
+
+  // HUD
+  drawHUD();
+}
+
+// ============================================================
+// Game loop
+// ============================================================
+function gameLoop(timestamp) {
+  if (!lastFrameTime) lastFrameTime = timestamp;
+  deltaTime = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+  lastFrameTime = timestamp;
+
+  update(deltaTime);
+  draw();
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// Input
+// ============================================================
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.key === ' ') {
+    e.preventDefault();
+    if (state === 'title') {
+      startIntro();
+    } else if (state === 'playing') {
+      jump();
+    }
+  } else if (state === 'title') {
+    startIntro();
+  } else if (state === 'playing') {
+    jump();
+  }
+});
+
+// Touch support for tablets
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  if (state === 'title') {
+    startIntro();
+  } else if (state === 'playing') {
+    jump();
+  }
+});
+
+// Start
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

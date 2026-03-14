@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎮 Kids Typing Games!</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(160deg, #ffecd2 0%, #fcb69f 30%, #a1c4fd 70%, #c2e9fb 100%);
+      font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', cursive;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Floating background shapes */
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.15;
+      animation: float linear infinite;
+      pointer-events: none;
+    }
+    @keyframes float {
+      from { transform: translateY(110vh) rotate(0deg); }
+      to   { transform: translateY(-20vh) rotate(360deg); }
+    }
+
+    /* Stars in background */
+    .star {
+      position: absolute;
+      font-size: 2rem;
+      opacity: 0.3;
+      animation: twinkle 2s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes twinkle {
+      from { opacity: 0.2; transform: scale(1); }
+      to   { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Title */
+    .title {
+      text-align: center;
+      margin-bottom: 20px;
+      z-index: 1;
+    }
+    .title h1 {
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      color: #fff;
+      text-shadow: 4px 4px 0 #ff6b6b, 6px 6px 0 #ffd93d;
+      letter-spacing: 2px;
+      animation: bounce 1.5s ease-in-out infinite alternate;
+    }
+    @keyframes bounce {
+      from { transform: translateY(0); }
+      to   { transform: translateY(-12px); }
+    }
+    .title p {
+      font-size: clamp(1rem, 3vw, 1.6rem);
+      color: #fff;
+      text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+      margin-top: 8px;
+    }
+
+    /* Game cards grid */
+    .games-grid {
+      display: flex;
+      gap: 40px;
+      flex-wrap: wrap;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    .game-card {
+      background: #fff;
+      border-radius: 32px;
+      padding: 40px 50px;
+      text-align: center;
+      cursor: pointer;
+      text-decoration: none;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 0 4px rgba(255,255,255,0.5);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      max-width: 300px;
+      position: relative;
+      overflow: hidden;
+    }
+    .game-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 32px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .game-card:hover {
+      transform: translateY(-10px) scale(1.04);
+      box-shadow: 0 24px 60px rgba(0,0,0,0.25), 0 0 0 4px rgba(255,255,255,0.8);
+    }
+    .game-card:hover::before { opacity: 1; }
+    .game-card:active { transform: scale(0.97); }
+
+    .game-card.dragon { background: linear-gradient(135deg, #fff9e6, #ffe4b5); }
+    .game-card.river  { background: linear-gradient(135deg, #e6f0ff, #b5d8ff); }
+    .game-card.boy    { background: linear-gradient(135deg, #e6f9ff, #b5e8ff); }
+
+    .card-emoji {
+      font-size: clamp(4rem, 8vw, 6rem);
+      display: block;
+      margin-bottom: 16px;
+      animation: wiggle 2s ease-in-out infinite;
+    }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(-5deg); }
+      50%       { transform: rotate(5deg); }
+    }
+    .game-card.boy .card-emoji { animation-delay: 0.5s; }
+
+    .card-title {
+      font-size: clamp(1.4rem, 3vw, 1.9rem);
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 8px;
+    }
+    .card-subtitle {
+      font-size: clamp(0.9rem, 2vw, 1.15rem);
+      color: #666;
+      line-height: 1.4;
+    }
+
+    .key-hint {
+      display: inline-block;
+      background: #333;
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      margin-top: 14px;
+      box-shadow: 0 3px 0 #111;
+      font-family: monospace;
+    }
+
+    .play-btn {
+      display: block;
+      margin-top: 20px;
+      background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 12px 36px;
+      font-size: 1.3rem;
+      font-family: inherit;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+      text-shadow: 1px 1px 0 rgba(0,0,0,0.2);
+      transition: transform 0.1s, box-shadow 0.1s;
+      text-decoration: none;
+    }
+    .game-card.river .play-btn {
+      background: linear-gradient(135deg, #42a5f5, #1565c0);
+    }
+    .game-card.boy .play-btn {
+      background: linear-gradient(135deg, #4fc3f7, #9b59b6);
+    }
+    .play-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 rgba(0,0,0,0.2); }
+    .play-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
+
+    footer {
+      margin-top: 40px;
+      color: rgba(255,255,255,0.7);
+      font-size: 0.9rem;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Decorative background bubbles -->
+  <script>
+    const colors = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff6bd6','#c77dff'];
+    for (let i = 0; i < 12; i++) {
+      const b = document.createElement('div');
+      b.className = 'bubble';
+      const size = 40 + Math.random() * 100;
+      b.style.cssText = `
+        width:${size}px; height:${size}px;
+        background:${colors[Math.floor(Math.random()*colors.length)]};
+        left:${Math.random()*100}%;
+        animation-duration:${8+Math.random()*12}s;
+        animation-delay:${-Math.random()*15}s;
+      `;
+      document.body.appendChild(b);
+    }
+    const starEmojis = ['⭐','🌟','✨','💫'];
+    for (let i = 0; i < 8; i++) {
+      const s = document.createElement('div');
+      s.className = 'star';
+      s.textContent = starEmojis[Math.floor(Math.random()*starEmojis.length)];
+      s.style.cssText = `
+        left:${5+Math.random()*90}%;
+        top:${5+Math.random()*90}%;
+        animation-delay:${Math.random()*2}s;
+        font-size:${1.5+Math.random()*1.5}rem;
+      `;
+      document.body.appendChild(s);
+    }
+  </script>
+
+  <div class="title">
+    <h1>🎮 Kids Typing Games!</h1>
+    <p>Choose a game and start playing!</p>
+  </div>
+
+  <div class="games-grid">
+
+    <!-- Game 1: Dragon Princess -->
+    <a class="game-card dragon" href="game1.html">
+      <span class="card-emoji">🐉👸</span>
+      <div class="card-title">Dragon & Princess!</div>
+      <div class="card-subtitle">
+        Help the princess jump over obstacles!<br>
+        The dragon is chasing her! 😱
+      </div>
+      <span class="key-hint">SPACE — Jump!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+    <!-- Game 3: River Crossing -->
+    <a class="game-card river" href="game3.html">
+      <span class="card-emoji">👸🌊🐟</span>
+      <div class="card-title">Cross the River!</div>
+      <div class="card-subtitle">
+        Help the princess jump across<br>
+        the river on floating bricks! 🧱
+      </div>
+      <span class="key-hint">A · B · C — Jump!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+    <!-- Game 2: Boy at Desk -->
+    <a class="game-card boy" href="game2.html">
+      <span class="card-emoji">🧒🪥🍎</span>
+      <div class="card-title">Daily Routine!</div>
+      <div class="card-subtitle">
+        Help the boy eat, brush teeth,<br>
+        and wash his face! 🌟
+      </div>
+      <span class="key-hint">5 · 6 · 7 — Catch!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+  </div>
+
+  <footer>🌈 Made with love for little explorers!</footer>
+
+</body>
+</html>

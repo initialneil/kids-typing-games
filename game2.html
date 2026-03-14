@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Routine! Press 5, 6, or 7!</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #FFF8E1;
+    font-family: 'Segoe UI', 'Comic Sans MS', cursive, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    user-select: none;
+  }
+
+  /* Top bar */
+  .top-bar {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 24px;
+    background: linear-gradient(135deg, #FFE082, #FFCC80);
+    border-bottom: 4px solid #FFB74D;
+  }
+
+  .back-btn {
+    font-size: 28px;
+    text-decoration: none;
+    color: #5D4037;
+    font-weight: bold;
+    background: #FFF3E0;
+    padding: 6px 18px;
+    border-radius: 16px;
+    border: 3px solid #BCAAA4;
+    transition: transform 0.15s;
+  }
+  .back-btn:hover { transform: scale(1.08); }
+
+  .title {
+    font-size: 36px;
+    color: #4E342E;
+    text-shadow: 2px 2px 0 #FFE082;
+    text-align: center;
+    flex: 1;
+  }
+
+  .score {
+    font-size: 32px;
+    color: #F57F17;
+    font-weight: bold;
+    min-width: 140px;
+    text-align: right;
+  }
+
+  /* Game area */
+  .game-area {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 12px 16px 0;
+    width: 100%;
+    max-width: 760px;
+    position: relative;
+  }
+
+  /* Columns */
+  .column {
+    flex: 1;
+    max-width: 220px;
+    border-radius: 20px;
+    border: 5px solid;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .column.eat {
+    background: linear-gradient(180deg, #FFF3E0 0%, #FFCCBC 100%);
+    border-color: #FF8A65;
+  }
+  .column.brush {
+    background: linear-gradient(180deg, #E0F7FA 0%, #B2EBF2 100%);
+    border-color: #4DD0E1;
+  }
+  .column.wash {
+    background: linear-gradient(180deg, #F3E5F5 0%, #E1BEE7 100%);
+    border-color: #BA68C8;
+  }
+
+  /* Column header */
+  .col-header {
+    padding: 10px 0 6px;
+    text-align: center;
+    width: 100%;
+    z-index: 2;
+  }
+  .col-header .key-icon {
+    display: inline-block;
+    width: 52px; height: 52px;
+    line-height: 52px;
+    font-size: 28px;
+    font-weight: 900;
+    border-radius: 12px;
+    color: #fff;
+    margin-bottom: 2px;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.2);
+  }
+  .eat .key-icon { background: #E65100; }
+  .brush .key-icon { background: #00838F; }
+  .wash .key-icon { background: #7B1FA2; }
+
+  .col-header .col-emoji {
+    display: block;
+    font-size: 28px;
+    margin-top: 2px;
+  }
+
+  /* Drop zone (middle area) */
+  .drop-area {
+    flex: 1;
+    width: 100%;
+    position: relative;
+  }
+
+  /* Falling icon */
+  .falling-icon {
+    position: absolute;
+    font-size: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+    transition: filter 0.2s;
+  }
+
+  /* Target zone */
+  .target-zone {
+    position: absolute;
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 90px;
+    border: 4px dashed rgba(0,0,0,0.2);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  }
+  .eat .target-zone { border-color: #FF8A65; }
+  .brush .target-zone { border-color: #4DD0E1; }
+  .wash .target-zone { border-color: #BA68C8; }
+
+  .target-zone.glow {
+    animation: pulseGlow 0.6s ease-in-out infinite alternate;
+  }
+  .eat .target-zone.glow {
+    border-color: #FF5722;
+    box-shadow: 0 0 20px #FF8A65, inset 0 0 20px rgba(255,138,101,0.3);
+    background: rgba(255,138,101,0.15);
+  }
+  .brush .target-zone.glow {
+    border-color: #00BCD4;
+    box-shadow: 0 0 20px #4DD0E1, inset 0 0 20px rgba(77,208,225,0.3);
+    background: rgba(77,208,225,0.15);
+  }
+  .wash .target-zone.glow {
+    border-color: #9C27B0;
+    box-shadow: 0 0 20px #BA68C8, inset 0 0 20px rgba(186,104,200,0.3);
+    background: rgba(186,104,200,0.15);
+  }
+
+  @keyframes pulseGlow {
+    0% { transform: scale(1); }
+    100% { transform: scale(1.03); }
+  }
+
+  /* Bottom label */
+  .col-footer {
+    padding: 8px 0 10px;
+    text-align: center;
+    width: 100%;
+    z-index: 2;
+  }
+  .col-footer .press-label {
+    font-size: 36px;
+    font-weight: 900;
+    letter-spacing: 2px;
+  }
+  .eat .press-label { color: #BF360C; }
+  .brush .press-label { color: #006064; }
+  .wash .press-label { color: #6A1B9A; }
+
+  .col-footer .catch-count {
+    font-size: 18px;
+    color: #666;
+    margin-top: 2px;
+  }
+
+  /* Column flash on success */
+  .column.flash-success {
+    animation: flashGreen 0.5s ease-out;
+  }
+  @keyframes flashGreen {
+    0% { background: #A5D6A7; }
+    100% { }
+  }
+
+  /* Boy at desk */
+  .boy-area {
+    width: 100%;
+    max-width: 760px;
+    text-align: center;
+    padding: 4px 0 8px;
+    position: relative;
+  }
+
+  .desk {
+    width: 90%;
+    max-width: 680px;
+    height: 18px;
+    background: linear-gradient(180deg, #8D6E63, #6D4C41);
+    border-radius: 8px 8px 0 0;
+    margin: 0 auto;
+    box-shadow: 0 4px 0 #5D4037;
+    position: relative;
+  }
+
+  .desk-legs {
+    width: 90%;
+    max-width: 680px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 30px;
+  }
+  .desk-leg {
+    width: 14px;
+    height: 24px;
+    background: #6D4C41;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .boy-emoji {
+    font-size: 64px;
+    position: relative;
+    top: -8px;
+    transition: transform 0.3s;
+    display: inline-block;
+  }
+  .boy-emoji.celebrate {
+    animation: boyBounce 0.5s ease-out;
+  }
+  @keyframes boyBounce {
+    0% { transform: scale(1) rotate(0deg); }
+    30% { transform: scale(1.3) rotate(-8deg); }
+    60% { transform: scale(1.15) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  /* Success popup */
+  .success-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    font-size: 48px;
+    font-weight: 900;
+    color: #FF6F00;
+    text-shadow: 2px 2px 0 #FFE082;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    white-space: nowrap;
+  }
+  .success-popup.show {
+    animation: popIn 1s ease-out forwards;
+  }
+  @keyframes popIn {
+    0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+    20% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+    50% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    100% { transform: translate(-50%, -70%) scale(0.8); opacity: 0; }
+  }
+
+  /* Star burst particles */
+  .star-particle {
+    position: absolute;
+    font-size: 32px;
+    pointer-events: none;
+    z-index: 50;
+    animation: starBurst 0.8s ease-out forwards;
+  }
+  @keyframes starBurst {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0.3) rotate(360deg); opacity: 0; }
+  }
+
+  /* Responsive */
+  @media (max-height: 700px) {
+    .title { font-size: 26px; }
+    .score { font-size: 24px; }
+    .falling-icon { font-size: 48px; }
+    .col-header .key-icon { width: 40px; height: 40px; line-height: 40px; font-size: 22px; }
+    .col-footer .press-label { font-size: 28px; }
+    .boy-emoji { font-size: 48px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="top-bar">
+  <a href="index.html" class="back-btn">&larr; Home</a>
+  <div class="title">Daily Routine! Press 5, 6, or 7!</div>
+  <div class="score" id="score">Stars: 0</div>
+</div>
+
+<!-- Game columns -->
+<div class="game-area">
+  <!-- EAT column -->
+  <div class="column eat" id="col-eat">
+    <div class="col-header">
+      <span class="key-icon">5</span>
+      <span class="col-emoji">Eat!</span>
+    </div>
+    <div class="drop-area" id="drop-eat">
+      <div class="falling-icon" id="icon-eat" style="display:none;"></div>
+      <div class="target-zone" id="zone-eat"></div>
+    </div>
+    <div class="col-footer">
+      <div class="press-label">Press 5</div>
+      <div class="catch-count" id="count-eat">0 caught</div>
+    </div>
+  </div>
+
+  <!-- BRUSH column -->
+  <div class="column brush" id="col-brush">
+    <div class="col-header">
+      <span class="key-icon">6</span>
+      <span class="col-emoji">Brush!</span>
+    </div>
+    <div class="drop-area" id="drop-brush">
+      <div class="falling-icon" id="icon-brush" style="display:none;"></div>
+      <div class="target-zone" id="zone-brush"></div>
+    </div>
+    <div class="col-footer">
+      <div class="press-label">Press 6</div>
+      <div class="catch-count" id="count-brush">0 caught</div>
+    </div>
+  </div>
+
+  <!-- WASH column -->
+  <div class="column wash" id="col-wash">
+    <div class="col-header">
+      <span class="key-icon">7</span>
+      <span class="col-emoji">Wash!</span>
+    </div>
+    <div class="drop-area" id="drop-wash">
+      <div class="falling-icon" id="icon-wash" style="display:none;"></div>
+      <div class="target-zone" id="zone-wash"></div>
+    </div>
+    <div class="col-footer">
+      <div class="press-label">Press 7</div>
+      <div class="catch-count" id="count-wash">0 caught</div>
+    </div>
+  </div>
+</div>
+
+<!-- Boy at desk -->
+<div class="boy-area">
+  <div class="boy-emoji" id="boy">&#x1F9D2;</div>
+  <div class="desk"></div>
+  <div class="desk-legs">
+    <div class="desk-leg"></div>
+    <div class="desk-leg"></div>
+  </div>
+</div>
+
+<!-- Success popup -->
+<div class="success-popup" id="popup"></div>
+
+<script>
+(function() {
+  // --- Audio ---
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let audioCtx;
+  function ensureAudio() {
+    if (!audioCtx) audioCtx = new AudioCtx();
+  }
+  function playSuccess() {
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(523, now);
+    osc.frequency.setValueAtTime(659, now + 0.1);
+    osc.frequency.setValueAtTime(784, now + 0.2);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+    osc.start(now);
+    osc.stop(now + 0.5);
+  }
+
+  // --- State ---
+  const SPEED = 80; // px per second
+  let totalStars = 0;
+  const praises = ['Great job!', 'Awesome!', 'Yay!', 'Super!', 'Wow!', 'Nice!'];
+
+  const columns = {
+    eat:   { key: '5', emoji: '&#x1F34E;', emojiAlt: ['&#x1F34C;','&#x1F352;','&#x1F353;','&#x1F34A;'], iconEl: null, zoneEl: null, dropEl: null, colEl: null, countEl: null, y: 0, active: false, inZone: false, count: 0, paused: false },
+    brush: { key: '6', emoji: '&#x1FAA5;', emojiAlt: ['&#x1FAA5;','&#x1F9F4;','&#x2728;'],              iconEl: null, zoneEl: null, dropEl: null, colEl: null, countEl: null, y: 0, active: false, inZone: false, count: 0, paused: false },
+    wash:  { key: '7', emoji: '&#x1F6BF;', emojiAlt: ['&#x1F6BF;','&#x1F4A7;','&#x1F9FC;'],             iconEl: null, zoneEl: null, dropEl: null, colEl: null, countEl: null, y: 0, active: false, inZone: false, count: 0, paused: false },
+  };
+
+  // Grab DOM
+  Object.keys(columns).forEach(name => {
+    const c = columns[name];
+    c.iconEl  = document.getElementById('icon-' + name);
+    c.zoneEl  = document.getElementById('zone-' + name);
+    c.dropEl  = document.getElementById('drop-' + name);
+    c.colEl   = document.getElementById('col-' + name);
+    c.countEl = document.getElementById('count-' + name);
+  });
+
+  const scoreEl = document.getElementById('score');
+  const boyEl   = document.getElementById('boy');
+  const popupEl = document.getElementById('popup');
+
+  function randomEmoji(col) {
+    const all = [col.emoji, ...col.emojiAlt];
+    return all[Math.floor(Math.random() * all.length)];
+  }
+
+  // --- Spawn ---
+  function spawnIcon(name) {
+    const c = columns[name];
+    if (c.active || c.paused) return;
+    c.active = true;
+    c.inZone = false;
+    c.y = -70;
+    c.iconEl.innerHTML = randomEmoji(c);
+    c.iconEl.style.display = 'block';
+    c.iconEl.style.top = c.y + 'px';
+    c.iconEl.style.opacity = '1';
+    c.iconEl.style.transform = 'translateX(-50%) scale(1)';
+    c.zoneEl.classList.remove('glow');
+  }
+
+  // --- Success ---
+  function doSuccess(name) {
+    const c = columns[name];
+    c.active = false;
+    c.count++;
+    totalStars++;
+    c.countEl.textContent = c.count + ' caught';
+    scoreEl.textContent = 'Stars: ' + totalStars;
+
+    playSuccess();
+
+    // Star burst from icon position
+    const iconRect = c.iconEl.getBoundingClientRect();
+    const cx = iconRect.left + iconRect.width / 2;
+    const cy = iconRect.top + iconRect.height / 2;
+    for (let i = 0; i < 6; i++) {
+      const star = document.createElement('div');
+      star.className = 'star-particle';
+      star.textContent = '\u2B50';
+      const angle = (Math.PI * 2 / 6) * i;
+      const dist = 60 + Math.random() * 40;
+      star.style.left = cx + 'px';
+      star.style.top = cy + 'px';
+      star.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+      star.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+      document.body.appendChild(star);
+      setTimeout(() => star.remove(), 900);
+    }
+
+    // Zoom icon out
+    c.iconEl.style.transition = 'transform 0.4s ease-out, opacity 0.4s ease-out';
+    c.iconEl.style.transform = 'translateX(-50%) scale(2.5)';
+    c.iconEl.style.opacity = '0';
+    setTimeout(() => {
+      c.iconEl.style.display = 'none';
+      c.iconEl.style.transition = '';
+    }, 400);
+
+    // Column flash
+    c.colEl.classList.remove('flash-success');
+    void c.colEl.offsetWidth; // reflow
+    c.colEl.classList.add('flash-success');
+    setTimeout(() => c.colEl.classList.remove('flash-success'), 600);
+
+    // Zone unglow
+    c.zoneEl.classList.remove('glow');
+
+    // Boy celebrate
+    boyEl.classList.remove('celebrate');
+    void boyEl.offsetWidth;
+    boyEl.classList.add('celebrate');
+    setTimeout(() => boyEl.classList.remove('celebrate'), 600);
+
+    // Popup
+    const praise = praises[Math.floor(Math.random() * praises.length)];
+    popupEl.textContent = praise + ' \uD83C\uDF89';
+    popupEl.classList.remove('show');
+    void popupEl.offsetWidth;
+    popupEl.classList.add('show');
+    setTimeout(() => popupEl.classList.remove('show'), 1100);
+
+    // Respawn after pause
+    c.paused = true;
+    setTimeout(() => {
+      c.paused = false;
+      spawnIcon(name);
+    }, 1500);
+  }
+
+  // --- Miss (exit bottom) ---
+  function doMiss(name) {
+    const c = columns[name];
+    c.active = false;
+    c.iconEl.style.display = 'none';
+    c.zoneEl.classList.remove('glow');
+
+    // Quiet respawn
+    c.paused = true;
+    setTimeout(() => {
+      c.paused = false;
+      spawnIcon(name);
+    }, 800);
+  }
+
+  // --- Key handling ---
+  const keyMap = { '5': 'eat', '6': 'brush', '7': 'wash' };
+
+  document.addEventListener('keydown', function(e) {
+    const name = keyMap[e.key];
+    if (!name) return;
+    const c = columns[name];
+    if (!c.active) return;
+    if (c.inZone) {
+      doSuccess(name);
+    }
+    // If not in zone yet, do nothing (gentle)
+  });
+
+  // --- Game loop ---
+  let lastTime = 0;
+
+  function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = (timestamp - lastTime) / 1000;
+    lastTime = timestamp;
+
+    Object.keys(columns).forEach(name => {
+      const c = columns[name];
+      if (!c.active) return;
+
+      c.y += SPEED * dt;
+      c.iconEl.style.top = c.y + 'px';
+
+      // Check zone
+      const dropH = c.dropEl.clientHeight;
+      const zoneTop = dropH - 90; // target zone height
+      const iconBottom = c.y + 64;
+
+      if (iconBottom >= zoneTop && c.y < dropH) {
+        c.inZone = true;
+        c.zoneEl.classList.add('glow');
+      } else {
+        c.inZone = false;
+        if (c.y < dropH) c.zoneEl.classList.remove('glow');
+      }
+
+      // Proximity glow (within 100px of zone)
+      if (iconBottom >= zoneTop - 100 && iconBottom < zoneTop) {
+        c.zoneEl.style.borderStyle = 'solid';
+      } else if (!c.inZone) {
+        c.zoneEl.style.borderStyle = 'dashed';
+      } else {
+        c.zoneEl.style.borderStyle = 'solid';
+      }
+
+      // Off bottom
+      if (c.y > dropH + 20) {
+        doMiss(name);
+      }
+    });
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  // --- Init ---
+  // Stagger spawns
+  setTimeout(() => spawnIcon('eat'), 500);
+  setTimeout(() => spawnIcon('brush'), 1800);
+  setTimeout(() => spawnIcon('wash'), 3200);
+
+  requestAnimationFrame(gameLoop);
+})();
+</script>
+</body>
+</html>
