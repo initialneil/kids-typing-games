@@ -60,6 +60,10 @@ const JUMP_VELOCITY = -11;
 const OBSTACLE_SPEED = 2.5;
 const OBSTACLE_INTERVAL_MIN = 2000;
 const OBSTACLE_INTERVAL_MAX = 4000;
+const DRAGON_CREEP_SPEED = 12; // px/s rightward drift
+const MIN_GAP = 50; // minimum px gap between dragon and princess (before scaling)
+const HIT_STUMBLE = 25; // princess slides left on hit (before scaling)
+const JUMP_KNOCKBACK = 35; // dragon knocked back on successful jump (before scaling)
 
 // -- Game State --
 let state = 'title'; // title, intro, playing
@@ -78,13 +82,13 @@ function groundY() { return canvas.height - canvas.height * GROUND_HEIGHT_RATIO;
 const princess = {
   x: -60, y: 0, w: 30, h: 40,
   vy: 0, jumping: false,
-  targetX: 150, legFrame: 0, legTimer: 0, flashTimer: 0
+  targetX: 0, legFrame: 0, legTimer: 0, flashTimer: 0
 };
 
 // -- Dragon --
 const dragon = {
   x: -120, y: 0, w: 40, h: 50,
-  targetX: 80, legFrame: 0, legTimer: 0
+  targetX: 0, legFrame: 0, legTimer: 0
 };
 
 // -- Obstacles --
@@ -517,6 +521,7 @@ function drawBackground() {
 // ============================================================
 function drawHUD() {
   const scale = Math.min(canvas.width / 800, canvas.height / 400);
+  const s = Math.max(scale, 0.7);
   const fontSize = Math.max(18, 24 * scale);
 
   // Title
@@ -531,10 +536,31 @@ function drawHUD() {
   ctx.fillStyle = '#f1c40f';
   ctx.fillText('Jumps: ' + score, canvas.width - 20, 35);
 
-  // Hearts (decorative)
+  // Hearts based on gap between dragon and princess
+  const gap = princess.x - dragon.x;
+  let heartCount = 1;
+  if (gap > 200 * s) heartCount = 3;
+  else if (gap > 120 * s) heartCount = 2;
+  const heartsStr = '\u2764\uFE0F'.repeat(heartCount);
+  const emptyStr = '\u{1F5A4}'.repeat(3 - heartCount);
+
   ctx.textAlign = 'right';
   ctx.font = `${fontSize}px 'Segoe UI', sans-serif`;
-  ctx.fillText('\u2764\uFE0F\u2764\uFE0F\u2764\uFE0F', canvas.width - 20, 62);
+  ctx.fillText(heartsStr + emptyStr, canvas.width - 20, 62);
+
+  // Gap bar indicator
+  const barX = canvas.width - 180;
+  const barY = 70;
+  const barW = 160;
+  const barH = 10;
+  const maxGapForBar = 300 * s;
+  const gapRatio = Math.min(1, Math.max(0, gap / maxGapForBar));
+
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  drawRoundRect(barX, barY, barW, barH, 4, 'rgba(0,0,0,0.4)');
+
+  const fillColor = gapRatio > 0.6 ? '#2ecc71' : gapRatio > 0.3 ? '#f39c12' : '#e74c3c';
+  drawRoundRect(barX, barY, barW * gapRatio, barH, 4, fillColor);
 }
 
 // ============================================================
@@ -661,6 +687,9 @@ function drawTitleScreen() {
 function startIntro() {
   state = 'intro';
   introStartTime = Date.now();
+  // Dynamic target positions based on canvas size
+  princess.targetX = canvas.width * 0.42;
+  dragon.targetX = canvas.width * 0.15;
   princess.x = -60;
   princess.y = groundY() - 40;
   dragon.x = -120;
@@ -673,6 +702,9 @@ function startIntro() {
 
 function startPlaying() {
   state = 'playing';
+  // Set initial positions from intro targets
+  princess.x = princess.targetX;
+  dragon.x = dragon.targetX;
   lastObstacleTime = Date.now();
   nextObstacleDelay = 2500;
 }
@@ -722,9 +754,9 @@ function update(dt) {
     // Ease out
     const ease = 1 - Math.pow(1 - t, 3);
 
-    princess.x = -60 + (princess.targetX * s + 60) * ease;
+    princess.x = -60 + (princess.targetX + 60) * ease;
     princess.y = gy - 40 * s;
-    dragon.x = -120 + (dragon.targetX * s + 120) * ease;
+    dragon.x = -120 + (dragon.targetX + 120) * ease;
     dragon.y = gy - 50 * s;
 
     // Animate legs during intro
@@ -738,8 +770,7 @@ function update(dt) {
   }
 
   if (state === 'playing') {
-    // Princess physics
-    princess.x = princess.targetX * s;
+    // Princess vertical physics (jumping)
     if (princess.jumping) {
       princess.vy += GRAVITY;
       princess.y += princess.vy;
@@ -752,9 +783,11 @@ function update(dt) {
       princess.y = gy - 40 * s;
     }
 
-    // Dragon follows
-    dragon.x = dragon.targetX * s;
-    dragon.y = princess.y - 10 * s;
+    // Dragon stays on ground always (no jumping)
+    dragon.y = gy - 50 * s;
+
+    // Dragon constantly creeps RIGHT toward the princess
+    dragon.x += DRAGON_CREEP_SPEED * s * dt;
 
     // Leg animation
     princess.legTimer += dt;
@@ -786,20 +819,30 @@ function update(dt) {
       const obsBox = getObstacleHitbox(obs);
 
       if (!obs.hit && rectsOverlap(princessBox, obsBox)) {
+        // HIT: princess stumbles LEFT (closer to dragon)
         obs.hit = true;
+        princess.x -= HIT_STUMBLE * s;
         princess.flashTimer = 1.0;
-        spawnSadPopup(obs.x, obs.y || gy - 30*s);
-        // Push obstacle away (no game over!)
-        obs.x = -100;
+        spawnSadPopup(princess.x, princess.y - 20*s);
       }
 
-      // Check if passed
+      // Check if passed (successful jump over obstacle)
       if (!obs.passed && !obs.hit && obs.x + 30*s < princess.x - 15*s) {
         obs.passed = true;
         score++;
+        // Dragon gets knocked BACK to the left
+        dragon.x -= JUMP_KNOCKBACK * s;
         spawnCelebration(princess.x, princess.y - 20*s);
       }
     }
+
+    // Clamp positions
+    // Dragon: min 20, max princess.x - MIN_GAP*s
+    dragon.x = Math.max(20, Math.min(dragon.x, princess.x - MIN_GAP * s));
+    // Princess: min dragon.x + MIN_GAP*s, max canvas.width * 0.7
+    princess.x = Math.max(dragon.x + MIN_GAP * s, Math.min(princess.x, canvas.width * 0.7));
+    // Re-clamp dragon after princess clamp (in case princess was pushed)
+    dragon.x = Math.min(dragon.x, princess.x - MIN_GAP * s);
 
     // Spawn new obstacles
     if (Date.now() - lastObstacleTime > nextObstacleDelay) {

@@ -148,7 +148,7 @@
     bottom: 0;
     left: 8px;
     right: 8px;
-    height: 90px;
+    height: 50%;
     border: 4px dashed rgba(0,0,0,0.2);
     border-radius: 14px;
     display: flex;
@@ -573,9 +573,9 @@
       c.y += SPEED * dt;
       c.iconEl.style.top = c.y + 'px';
 
-      // Check zone
+      // Check zone — bottom half of column
       const dropH = c.dropEl.clientHeight;
-      const zoneTop = dropH - 90; // target zone height
+      const zoneTop = dropH / 2;   // target zone = bottom 50%
       const iconBottom = c.y + 64;
 
       if (iconBottom >= zoneTop && c.y < dropH) {
@@ -586,8 +586,8 @@
         if (c.y < dropH) c.zoneEl.classList.remove('glow');
       }
 
-      // Proximity glow (within 100px of zone)
-      if (iconBottom >= zoneTop - 100 && iconBottom < zoneTop) {
+      // Proximity glow (within 60px of zone)
+      if (iconBottom >= zoneTop - 60 && iconBottom < zoneTop) {
         c.zoneEl.style.borderStyle = 'solid';
       } else if (!c.inZone) {
         c.zoneEl.style.borderStyle = 'dashed';
