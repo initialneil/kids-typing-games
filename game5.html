@@ -1,0 +1,1718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magic Letter Blocks!</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; }
+body {
+  background: #cfe8ff;
+  overflow: hidden;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#scene { position: fixed; inset: 0; }
+#scene canvas { display: block; touch-action: none; }
+#back-btn {
+  position: absolute;
+  top: 12px; left: 12px;
+  background: rgba(255,255,255,0.9);
+  border: 3px solid #e91e63;
+  border-radius: 12px;
+  padding: 8px 18px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #e91e63;
+  cursor: pointer;
+  text-decoration: none;
+  z-index: 10;
+  font-family: 'Segoe UI', sans-serif;
+}
+#back-btn:hover { background: #fce4ec; }
+
+/* ---------- Title overlay ---------- */
+#overlay {
+  position: fixed; inset: 0; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+  background: radial-gradient(circle at 50% 40%, rgba(255,255,255,0.7), rgba(255,228,240,0.5) 60%, rgba(207,232,255,0.3));
+  transition: opacity 0.6s ease;
+}
+#overlay.hide { opacity: 0; pointer-events: none; }
+.card {
+  text-align: center;
+  padding: 24px 32px 28px;
+  background: rgba(255,255,255,0.88);
+  border-radius: 36px;
+  border: 6px solid #ffd23f;
+  box-shadow: 0 12px 0 #ffb3c7, 0 22px 40px rgba(0,0,0,0.12);
+  max-width: 100%;
+}
+.bear { font-size: 64px; display: inline-block; animation: bob 1.8s ease-in-out infinite; }
+#title { font-size: clamp(34px, 7vw, 76px); line-height: 1.15; margin: 6px 0 12px; }
+#title span {
+  display: inline-block;
+  text-shadow: 0 4px 0 rgba(0,0,0,0.13);
+  animation: hop 1.4s ease-in-out infinite;
+}
+.sub { font-size: clamp(22px, 3.6vw, 34px); color: #7a4fd6; animation: pulse 1.2s ease-in-out infinite; }
+.hints { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.hints span { background: #fff3c4; border-radius: 999px; padding: 6px 14px; font-size: 18px; color: #6b4a00; }
+#msg {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  background: #fff; border-radius: 16px; padding: 10px 18px; font-size: 18px; color: #b0003a;
+  display: none; z-index: 6;
+}
+/* mode + level buttons */
+.modes { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin: 4px 0 12px; }
+.mode-btn, .lvl-btn, #go-btn {
+  font-family: inherit; cursor: pointer; border: 4px solid #e0d4ff; background: #fff;
+  border-radius: 22px; color: #5a2d82; transition: transform 0.15s;
+}
+.mode-btn { font-size: clamp(22px, 3.4vw, 32px); padding: 12px 22px; min-width: 220px; }
+.lvl-btn { font-size: 18px; padding: 8px 14px; }
+.mode-btn:hover, .lvl-btn:hover { transform: translateY(-3px); }
+.mode-btn.selected, .lvl-btn.selected { border-color: #ffb302; background: #fff6d6; box-shadow: 0 5px 0 #ffd23f; }
+.key {
+  display: inline-block; min-width: 1.5em; margin-right: 8px; padding: 0 6px; border-radius: 8px;
+  background: #7a4fd6; color: #fff; font-size: 0.7em; vertical-align: middle; box-shadow: 0 3px 0 #4a2a96;
+}
+.levels { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.levels[hidden], .hints[hidden] { display: none; }
+#go-btn {
+  font-size: clamp(22px, 3.4vw, 30px); padding: 8px 26px; margin-top: 4px;
+  background: #7a4fd6; color: #fff; border-color: #7a4fd6; box-shadow: 0 5px 0 #4a2a96;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+#go-btn.wiggle { animation: wiggle 0.4s ease; }
+/* Spell It! HUD */
+#hud {
+  position: fixed; top: 12px; right: 12px; z-index: 4; display: none; gap: 12px; align-items: center;
+  background: rgba(255,255,255,0.92); border: 3px solid #ffd23f; border-radius: 16px; padding: 6px 14px;
+  font-size: 22px; color: #6b4a00; box-shadow: 0 4px 0 #ffb3c7;
+}
+#hud.show { display: flex; }
+#hud-prog { letter-spacing: 2px; color: #ffb302; }
+#hud .esc { font-size: 14px; color: #9a7b3a; }
+#hud-stars { display: inline-block; }
+#hud-stars.bump { animation: bump 0.5s ease; }
+@keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.5); } 100% { transform: scale(1); } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+@keyframes hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes bob { 0%, 100% { transform: rotate(-8deg) translateY(0); } 50% { transform: rotate(8deg) translateY(-8px); } }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+</style>
+</head>
+<body>
+<a id="back-btn" href="index.html">← Home</a>
+<div id="scene"></div>
+
+<div id="overlay">
+  <div class="card">
+    <div class="bear">🧸</div>
+    <h1 id="title">Magic Letter Blocks!</h1>
+    <div class="modes">
+      <button class="mode-btn" id="btn-free" type="button"><span class="key">1</span>🎈 Free Play</button>
+      <button class="mode-btn" id="btn-spell" type="button"><span class="key">2</span>🔤 Spell It!</button>
+    </div>
+    <div class="levels" id="levels" hidden>
+      <button class="lvl-btn" data-level="1" type="button"><span class="key">3</span>Level 1 · 3 letters 🐱</button>
+      <button class="lvl-btn" data-level="2" type="button"><span class="key">4</span>Level 2 · 4 letters 🐸</button>
+      <button class="lvl-btn" data-level="3" type="button"><span class="key">5</span>Level 3 · 5 letters 🦓</button>
+    </div>
+    <button id="go-btn" type="button">▶ Play!</button>
+    <div class="hints" id="hints-free">
+      <span>🔤 Letters = blocks</span>
+      <span>🔢 Numbers = balloons</span>
+      <span>␣ Space = hop</span>
+      <span>⏎ Enter = tidy up</span>
+    </div>
+    <div class="hints" id="hints-spell" hidden>
+      <span>🖼️ Look at the picture</span>
+      <span>🔤 Type the glowing letter</span>
+      <span>⏎ Enter = new word</span>
+      <span>Esc = menu</span>
+    </div>
+  </div>
+</div>
+<div id="hud"><span id="hud-level">Level 1</span><span id="hud-prog"></span><span id="hud-stars">⭐ 0</span><span class="esc">Esc = menu</span></div>
+<div id="msg"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+// ================================================================
+//  Magic Letter Blocks — 3D Kids Typing Game (three.js)
+//  Every key does something delightful. There is no way to fail.
+// ================================================================
+import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// ---------------------------------------------------------------
+//  Data
+// ---------------------------------------------------------------
+const LETTERS = {
+  A: ['🍎', 'Apple'],   B: ['⚽', 'Ball'],     C: ['🐱', 'Cat'],     D: ['🐶', 'Dog'],
+  E: ['🥚', 'Egg'],     F: ['🐟', 'Fish'],     G: ['🍇', 'Grapes'],  H: ['🎩', 'Hat'],
+  I: ['🍦', 'Ice cream'], J: ['🧃', 'Juice'],  K: ['🪁', 'Kite'],    L: ['🦁', 'Lion'],
+  M: ['🌙', 'Moon'],    N: ['👃', 'Nose'],     O: ['🐙', 'Octopus'], P: ['🐷', 'Pig'],
+  Q: ['👑', 'Queen'],   R: ['🌈', 'Rainbow'],  S: ['☀️', 'Sun'],     T: ['🐯', 'Tiger'],
+  U: ['☂️', 'Umbrella'], V: ['🎻', 'Violin'],  W: ['🐳', 'Whale'],   X: ['🎄', 'Xmas tree'],
+  Y: ['🪀', 'Yo-yo'],   Z: ['🦓', 'Zebra'],
+};
+
+// Easter-egg words (checked longest first)
+const WORDS = {
+  CAT: '🐱', DOG: '🐶', SUN: '☀️', MOM: '👩', DAD: '👨', BUS: '🚌', PIG: '🐷', COW: '🐮',
+  HAT: '🎩', BEE: '🐝', CAR: '🚗', BED: '🛏️', EGG: '🥚', FOX: '🦊', OWL: '🦉', ZOO: '🦁',
+  STAR: '⭐', FISH: '🐟', CAKE: '🎂', FROG: '🐸', DUCK: '🦆', BALL: '⚽', TREE: '🌳',
+};
+const WORD_KEYS = Object.keys(WORDS).sort((a, b) => b.length - a.length);
+
+const BLOCK_COLORS = ['#ff5c8a', '#ffb302', '#36c26b', '#3fa7ff', '#a066ff', '#ff7a3d',
+                      '#00c2b8', '#ff4f4f', '#f2c400', '#7bd23a', '#ff6fd8', '#4f7dff'];
+const BALLOON_COLORS = ['#ff4f6d', '#ffb302', '#36c26b', '#3fa7ff', '#a066ff', '#ff7a3d', '#ff6fd8', '#00c2b8'];
+const SPARK_COLORS = ['#ffd23f', '#ff5c8a', '#6ee7ff', '#a6ff6e', '#c98bff', '#ffffff', '#ff9a3d'];
+
+const KID_FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive';
+const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif';
+
+// ---------------------------------------------------------------
+//  Layout / physics constants
+// ---------------------------------------------------------------
+const RUG_TOP = 0.3;            // y of the rug surface
+const RUG_R = 7;                // rug radius
+const PER_ROW = 8;
+const ROW_Z = [-1.8, 0, 1.8];   // row 1 at the back, new rows form in front
+const MAX_BLOCKS = PER_ROW * ROW_Z.length;
+const SLOT_GAP = 1.2;
+const G = 38;                   // gravity for the toy-ish bouncy physics
+const SPRING_K = 260, SPRING_D = 9; // squash-and-stretch spring
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const easeOutBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const easeOutCubic = k => 1 - Math.pow(1 - k, 3);
+
+// Mix two #rrggbb colours in sRGB space → css rgb()
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = s => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
+  return `rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+function titleCase(w) { return w[0] + w.slice(1).toLowerCase(); }
+
+// ---------------------------------------------------------------
+//  Title letters (rainbow hop)
+// ---------------------------------------------------------------
+(function decorateTitle() {
+  const el = document.getElementById('title');
+  const text = el.textContent;
+  el.textContent = '';
+  let ci = 0;
+  [...text].forEach((ch, i) => {
+    const s = document.createElement('span');
+    s.textContent = ch === ' ' ? ' ' : ch;
+    if (ch !== ' ') s.style.color = BLOCK_COLORS[ci++ % BLOCK_COLORS.length];
+    s.style.animationDelay = (i * 0.07) + 's';
+    el.appendChild(s);
+  });
+})();
+
+// ---------------------------------------------------------------
+//  Audio (synthesized WebAudio, same style as game2)
+// ---------------------------------------------------------------
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null, master = null, noiseBuf = null;
+function ensureAudio() {
+  if (!AudioCtx) return;
+  if (!audioCtx) {
+    audioCtx = new AudioCtx();
+    master = audioCtx.createGain();
+    master.gain.value = 0.6;
+    master.connect(audioCtx.destination);
+    // one second of white noise, reused by every noisy sound
+    noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+// A single oscillator note with a pitch glide and a quick envelope
+function tone(type, f0, f1, dur, vol, delay = 0) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f0, t);
+  if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+// Filtered noise burst (pops, whooshes, crackles)
+function noise(dur, vol, ftype, f0, f1 = f0, delay = 0, q = 1) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime + delay;
+  const src = audioCtx.createBufferSource(); src.buffer = noiseBuf;
+  const f = audioCtx.createBiquadFilter(); f.type = ftype; f.Q.value = q;
+  f.frequency.setValueAtTime(f0, t);
+  if (f1 !== f0) f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(master);
+  src.start(t, Math.random() * 0.4); src.stop(t + dur + 0.05);
+}
+const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28];
+const sfx = {
+  whoop()   { tone('sine', 500, 900, 0.12, 0.05); },
+  plonk(i)  { // wooden-toy plonk, pitch depends on the letter
+    const f = 262 * Math.pow(2, PENTA[i % PENTA.length] / 12);
+    tone('triangle', f * 1.03, f, 0.35, 0.32);
+    tone('sine', f * 2, f * 1.94, 0.14, 0.12);
+    noise(0.04, 0.18, 'bandpass', 1500, 1500, 0, 2);
+  },
+  boing() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    const lfo = audioCtx.createOscillator(), lg = audioCtx.createGain();
+    lfo.frequency.value = 14; lg.gain.value = 35;
+    lfo.connect(lg); lg.connect(o.frequency);
+    o.type = 'sine';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(520, t + 0.15);
+    o.frequency.exponentialRampToValueAtTime(240, t + 0.5);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    o.connect(g); g.connect(master);
+    o.start(t); lfo.start(t); o.stop(t + 0.6); lfo.stop(t + 0.6);
+  },
+  pop(big)  { noise(big ? 0.3 : 0.09, big ? 0.5 : 0.35, 'highpass', 900); tone('sine', big ? 500 : 900, 140, big ? 0.2 : 0.08, 0.2); },
+  count(n)  { // rising tone for counting balloons
+    const f = 392 * Math.pow(2, PENTA[(n - 1) % PENTA.length] / 12);
+    tone('triangle', f, f, 0.4, 0.26);
+    tone('sine', f * 2, f * 2, 0.25, 0.08, 0.02);
+  },
+  giant()   { tone('sine', 110, 230, 0.9, 0.3); tone('triangle', 220, 460, 0.9, 0.1); },
+  chime()   { [523, 659, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, f, 0.6, 0.2, i * 0.08)); },
+  tumble()  {
+    tone('triangle', 700, 140, 0.7, 0.2);
+    noise(0.6, 0.12, 'lowpass', 800, 150);
+    [0, 0.12, 0.22, 0.35, 0.5].forEach(d => noise(0.05, 0.15, 'bandpass', rand(500, 1400), rand(500, 1400), d, 3));
+  },
+  launch()  { noise(0.6, 0.1, 'bandpass', 300, 2500, 0, 2); },
+  boom()    {
+    noise(0.6, 0.35, 'lowpass', 1500, 120);
+    for (let i = 0; i < 8; i++) noise(0.03, 0.1, 'highpass', 3000, 3000, rand(0.15, 0.6));
+  },
+  boop()    { tone('sine', 330, 180, 0.22, 0.14); tone('triangle', 165, 120, 0.2, 0.05); },
+  squeak()  { tone('square', 700, 1300, 0.12, 0.06); tone('square', 1300, 900, 0.12, 0.06, 0.12); },
+};
+
+// ---------------------------------------------------------------
+//  Speech (guarded — not every browser has speechSynthesis)
+// ---------------------------------------------------------------
+const synth = ('speechSynthesis' in window) ? window.speechSynthesis : null;
+let voice = null;
+function pickVoice() {
+  if (!synth) return;
+  const vs = synth.getVoices();
+  voice = vs.find(v => /^en[-_]US/i.test(v.lang) && /Samantha|Google US|Karen|Zira|Aria|Jenny/i.test(v.name))
+       || vs.find(v => /^en/i.test(v.lang)) || null;
+}
+if (synth) {
+  pickVoice();
+  if (synth.addEventListener) synth.addEventListener('voiceschanged', pickVoice);
+}
+// A lone capital ("C") is read as "capital C"; lower-case it. A lone "a" reads as "uh", so say "ay".
+function speakableLetters(text) {
+  return text.replace(/\b([A-Z])\b/g, (_, ch) => ch === 'A' ? 'ay' : ch.toLowerCase());
+}
+
+function speak(text, interrupt = true) {
+  if (!synth) return;
+  text = speakableLetters(text);
+  try {
+    if (interrupt) synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    if (voice) u.voice = voice;
+    u.lang = voice ? voice.lang : 'en-US';
+    u.pitch = 1.2;
+    u.rate = 0.95;
+    synth.speak(u);
+  } catch (e) { /* speech is a bonus; never break the game */ }
+}
+
+// ---------------------------------------------------------------
+//  Renderer / scene / camera
+// ---------------------------------------------------------------
+const container = document.getElementById('scene');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+} catch (e) {
+  const m = document.getElementById('msg');
+  m.textContent = 'Sorry! This browser cannot show 3D graphics (WebGL).';
+  m.style.display = 'block';
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+const ANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#cfe8ff');
+
+const FOV = 50;
+const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 200);
+const CAM_TARGET = new THREE.Vector3(0, 1.4, 0.4);
+const CAM_OFFSET = new THREE.Vector3(2.4, 6.0, 10.6);
+let camDist = 1;
+
+// Lights: warm hemisphere + a soft shadow-casting "sun"
+scene.add(new THREE.HemisphereLight('#fff6e8', '#ffd9c2', 1.7));
+const sun = new THREE.DirectionalLight('#fff1dc', 2.1);
+sun.position.set(6, 14, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -13, right: 13, top: 13, bottom: -13, near: 1, far: 40 });
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+
+// ---------------------------------------------------------------
+//  Canvas texture helpers (all art is drawn here — no image files)
+// ---------------------------------------------------------------
+function makeCanvas(w, h = w) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  return [c, c.getContext('2d')];
+}
+function toTexture(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = ANISO;
+  return t;
+}
+function roundRectPath(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+// One block face: coloured background, soft inner frame, then custom drawing
+function blockFace(bg, draw) {
+  const [c, g] = makeCanvas(256);
+  g.fillStyle = bg; g.fillRect(0, 0, 256, 256);
+  g.lineWidth = 12; g.strokeStyle = 'rgba(255,255,255,0.5)';
+  roundRectPath(g, 22, 22, 212, 212, 30); g.stroke();
+  if (draw) draw(g);
+  return toTexture(c);
+}
+function drawLetter(g, ch, color) {
+  g.font = `bold 170px ${KID_FONT}`;
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+  g.lineWidth = 16; g.strokeStyle = mixHex(color, '#000000', 0.45);
+  g.strokeText(ch, 128, 140);
+  g.fillStyle = '#ffffff'; g.fillText(ch, 128, 140);
+}
+function drawEmoji(g, emoji, size, x, y) {
+  g.font = `${size}px ${EMOJI_FONT}`;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(emoji, x, y);
+}
+
+// Materials for one alphabet block. Box face order: +x, -x, +y, -y, +z, -z
+function makeBlockMaterials(letter, color) {
+  const std = map => new THREE.MeshStandardMaterial({ map, roughness: 0.55, metalness: 0 });
+  const front  = std(blockFace(color, g => drawLetter(g, letter, color)));
+  const side   = std(blockFace(color, g => drawLetter(g, letter.toLowerCase(), color)));
+  // (RoundedBoxGeometry maps the top face's texture-up to -z, so the picture reads upright from the camera)
+  const top    = std(blockFace(mixHex(color, '#ffffff', 0.6), g => drawEmoji(g, LETTERS[letter][0], 150, 128, 138)));
+  const bottom = std(blockFace(color));
+  return { list: [side, side, top, bottom, front, front], unique: [front, side, top, bottom] };
+}
+
+// Cached textures (bounded sets — never disposed)
+const emojiTexCache = new Map();
+function emojiTexture(emoji) {
+  if (!emojiTexCache.has(emoji)) {
+    const [c, g] = makeCanvas(256);
+    g.shadowColor = 'rgba(255,255,255,0.95)'; g.shadowBlur = 18;
+    drawEmoji(g, emoji, 200, 128, 140);
+    emojiTexCache.set(emoji, toTexture(c));
+  }
+  return emojiTexCache.get(emoji);
+}
+const wordTexCache = new Map();
+// Rainbow letters with a white outline, shrunk to fit the canvas width
+function drawRainbowText(g, text, y, size) {
+  g.font = `bold ${size}px ${KID_FONT}`;
+  const fit = Math.min(1, 480 / g.measureText(text).width);
+  g.font = `bold ${Math.floor(size * fit)}px ${KID_FONT}`;
+  g.textBaseline = 'middle'; g.lineJoin = 'round'; g.textAlign = 'left';
+  let x = 256 - g.measureText(text).width / 2;
+  [...text].forEach((ch, i) => {
+    g.lineWidth = 18; g.strokeStyle = '#ffffff'; g.strokeText(ch, x, y);
+    g.fillStyle = BLOCK_COLORS[i * 3 % BLOCK_COLORS.length]; g.fillText(ch, x, y);
+    x += g.measureText(ch).width;
+  });
+}
+// Big picture + word (word easter eggs and Spell It! celebrations); also used for banners
+function wordTexture(word, emoji = WORDS[word]) {
+  const key = word + '|' + emoji;
+  if (!wordTexCache.has(key)) {
+    const [c, g] = makeCanvas(512);
+    g.shadowColor = 'rgba(255,255,255,0.95)'; g.shadowBlur = 24;
+    drawEmoji(g, emoji, 270, 256, 200);
+    g.shadowBlur = 0;
+    drawRainbowText(g, word, 430, 120);
+    wordTexCache.set(key, toTexture(c));
+  }
+  return wordTexCache.get(key);
+}
+const numberMatCache = new Map();
+function numberSpriteMaterial(n) {
+  if (!numberMatCache.has(n)) {
+    const [c, g] = makeCanvas(128);
+    g.fillStyle = 'rgba(255,255,255,0.92)';
+    g.beginPath(); g.arc(64, 64, 54, 0, Math.PI * 2); g.fill();
+    g.font = `bold 92px ${KID_FONT}`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#5a2d82'; g.fillText(String(n), 64, 70);
+    // depthTest off so the number is always readable on its balloon
+    numberMatCache.set(n, new THREE.SpriteMaterial({ map: toTexture(c), depthTest: false, transparent: true }));
+  }
+  return numberMatCache.get(n);
+}
+
+// ---------------------------------------------------------------
+//  The playroom (static scenery)
+// ---------------------------------------------------------------
+function buildRoom() {
+  // Wooden floor with planks
+  const [fc, fg] = makeCanvas(512);
+  for (let i = 0; i < 4; i++) {
+    fg.fillStyle = i % 2 ? '#f2d3a7' : '#efcd9c';
+    fg.fillRect(0, i * 128, 512, 128);
+    fg.fillStyle = '#d9b47f'; fg.fillRect(0, i * 128, 512, 4);
+    fg.fillRect(((i * 197) % 400) + 60, i * 128, 4, 128);
+    fg.strokeStyle = 'rgba(180,130,80,0.18)'; fg.lineWidth = 2;
+    for (let k = 0; k < 4; k++) {
+      fg.beginPath(); fg.moveTo(0, i * 128 + 20 + k * 27);
+      fg.bezierCurveTo(170, i * 128 + 10 + k * 27, 340, i * 128 + 34 + k * 27, 512, i * 128 + 22 + k * 27);
+      fg.stroke();
+    }
+  }
+  const floorTex = toTexture(fc);
+  floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+  floorTex.repeat.set(10, 10);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
+    new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.9 }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+
+  // Walls: polka-dot back wall, striped left wall
+  const [wc, wg] = makeCanvas(256);
+  wg.fillStyle = '#cfe8ff'; wg.fillRect(0, 0, 256, 256);
+  wg.fillStyle = 'rgba(255,255,255,0.6)';
+  [[64, 64], [192, 192]].forEach(([x, y]) => { wg.beginPath(); wg.arc(x, y, 22, 0, Math.PI * 2); wg.fill(); });
+  const wallTex = toTexture(wc);
+  wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping;
+  wallTex.repeat.set(14, 7);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), new THREE.MeshStandardMaterial({ map: wallTex, roughness: 1 }));
+  back.position.set(0, 15, -12);
+  back.receiveShadow = true;
+  scene.add(back);
+
+  const [sc, sg] = makeCanvas(128);
+  sg.fillStyle = '#ffe0ec'; sg.fillRect(0, 0, 128, 128);
+  sg.fillStyle = '#ffd0e2'; sg.fillRect(0, 0, 64, 128);
+  const stripeTex = toTexture(sc);
+  stripeTex.wrapS = stripeTex.wrapT = THREE.RepeatWrapping;
+  stripeTex.repeat.set(20, 1);
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(60, 30), new THREE.MeshStandardMaterial({ map: stripeTex, roughness: 1 }));
+  left.rotation.y = Math.PI / 2;
+  left.position.set(-15, 15, 0);
+  scene.add(left);
+
+  // Window with a cheerful sky
+  const [skc, skg] = makeCanvas(256, 192);
+  const grad = skg.createLinearGradient(0, 0, 0, 192);
+  grad.addColorStop(0, '#7cc8ff'); grad.addColorStop(1, '#d6f0ff');
+  skg.fillStyle = grad; skg.fillRect(0, 0, 256, 192);
+  skg.fillStyle = '#ffe066'; skg.beginPath(); skg.arc(200, 50, 28, 0, Math.PI * 2); skg.fill();
+  skg.fillStyle = '#ffffff';
+  [[60, 70, 22], [85, 62, 28], [112, 72, 20], [150, 130, 18], [172, 124, 24]].forEach(([x, y, r]) => {
+    skg.beginPath(); skg.arc(x, y, r, 0, Math.PI * 2); skg.fill();
+  });
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.6), new THREE.MeshBasicMaterial({ map: toTexture(skc) }));
+  win.position.set(5, 4.6, -11.95);
+  scene.add(win);
+  const frameMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.6 });
+  [[0, 1.85, 5.4, 0.25], [0, -1.85, 5.4, 0.25], [-2.6, 0, 0.25, 3.9], [2.6, 0, 0.25, 3.9], [0, 0, 0.12, 3.6], [0, 0, 5, 0.12]]
+    .forEach(([x, y, w, h]) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.15), frameMat);
+      m.position.set(5 + x, 4.6 + y, -11.88);
+      scene.add(m);
+    });
+
+  // Bunting flags across the back wall
+  const flagShape = new THREE.Shape();
+  flagShape.moveTo(-0.35, 0); flagShape.lineTo(0.35, 0); flagShape.lineTo(0, -0.65); flagShape.closePath();
+  const flagGeo = new THREE.ShapeGeometry(flagShape);
+  for (let i = 0; i < 15; i++) {
+    const x = -11 + i * 1.3;
+    const sag = 0.9 * (1 - Math.pow((x - (-1.9)) / 9.1, 2));
+    const f = new THREE.Mesh(flagGeo, new THREE.MeshStandardMaterial({ color: BLOCK_COLORS[i % BLOCK_COLORS.length], side: THREE.DoubleSide }));
+    f.position.set(x, 8.3 - sag, -11.9);
+    scene.add(f);
+  }
+
+  // The big round rug
+  const [rc, rg] = makeCanvas(512);
+  const ringCols = ['#ffc2d4', '#ffe9a8', '#c9f2d0', '#cfe3ff', '#e8d4ff'];
+  for (let i = 0; i < 10; i++) {
+    rg.fillStyle = ringCols[i % ringCols.length];
+    rg.beginPath(); rg.arc(256, 256, 256 - i * 25, 0, Math.PI * 2); rg.fill();
+  }
+  rg.fillStyle = 'rgba(255,255,255,0.75)';
+  for (let a = 0; a < 36; a++) {
+    const ang = a / 36 * Math.PI * 2;
+    rg.beginPath(); rg.arc(256 + Math.cos(ang) * 240, 256 + Math.sin(ang) * 240, 6, 0, Math.PI * 2); rg.fill();
+  }
+  const rugTop = new THREE.MeshStandardMaterial({ map: toTexture(rc), roughness: 1 });
+  const rugSide = new THREE.MeshStandardMaterial({ color: '#ffb3c7', roughness: 1 });
+  const rug = new THREE.Mesh(new THREE.CylinderGeometry(RUG_R, RUG_R, RUG_TOP, 72), [rugSide, rugTop, rugSide]);
+  rug.position.y = RUG_TOP / 2;
+  rug.receiveShadow = true;
+  scene.add(rug);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(RUG_R, 0.14, 10, 96), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.8 }));
+  trim.rotation.x = Math.PI / 2; trim.position.y = RUG_TOP - 0.02;
+  scene.add(trim);
+}
+
+// Beach-ball texture (shared by the prop ball and the "Ball" toy)
+const beachBallMat = (() => {
+  const [c, g] = makeCanvas(512, 256);
+  const cols = ['#ff4f4f', '#ffffff', '#3fa7ff', '#ffffff', '#ffd23f', '#ffffff'];
+  cols.forEach((col, i) => { g.fillStyle = col; g.fillRect(i * 512 / 6, 0, 512 / 6 + 1, 256); });
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 512, 22); g.fillRect(0, 234, 512, 22);
+  return new THREE.MeshStandardMaterial({ map: toTexture(c), roughness: 0.35 });
+})();
+
+let teddyHead = null;
+function buildProps() {
+  const std = (color, rough = 0.6) => new THREE.MeshStandardMaterial({ color, roughness: rough });
+  const add = (mesh, x, y, z, parent = scene) => {
+    mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
+  };
+
+  // Teddy bear 🧸 sitting by the rug
+  const teddy = new THREE.Group();
+  const fur = std('#c68b59', 0.9), light = std('#f1d2a9', 0.9), dark = std('#3b2618', 0.3);
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 24, 18), fur), 0, 0.95, 0, teddy).scale.set(1, 1.1, 0.9);
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 14), light), 0, 0.9, 0.42, teddy).scale.set(1, 1, 0.6);
+  [-1, 1].forEach(s => {
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), fur), s * 0.85, 1.25, 0.2, teddy);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.36, 16, 12), fur), s * 0.48, 0.35, 0.6, teddy);
+  });
+  teddyHead = new THREE.Group(); teddyHead.position.y = 1.95; teddy.add(teddyHead);
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.65, 24, 18), fur), 0, 0.2, 0, teddyHead);
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), light), 0, 0.05, 0.55, teddyHead).scale.set(1, 0.8, 0.8);
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), dark), 0, 0.13, 0.8, teddyHead);
+  [-1, 1].forEach(s => {
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 14, 10), fur), s * 0.5, 0.7, 0, teddyHead);
+    add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), dark), s * 0.22, 0.33, 0.56, teddyHead);
+  });
+  teddy.position.set(-7.6, 0, -4.6);
+  teddy.lookAt(CAM_OFFSET.x, 0, CAM_OFFSET.z);
+  scene.add(teddy);
+
+  // Ring-stacker toy
+  const stacker = new THREE.Group();
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1, 0.3, 32), std('#8e7cc3')), 0, 0.15, 0, stacker);
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2, 12), std('#f7e1b5')), 0, 1.3, 0, stacker);
+  [[0.72, '#ff5c8a'], [0.6, '#ffb302'], [0.48, '#36c26b'], [0.36, '#3fa7ff']].forEach(([r, col], i) => {
+    const ring = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.2, 14, 32), std(col, 0.4)), 0, 0.5 + i * 0.4, 0, stacker);
+    ring.rotation.x = Math.PI / 2;
+  });
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12), std('#a066ff', 0.4)), 0, 2.45, 0, stacker);
+  stacker.position.set(8.4, 0, -4.2);
+  scene.add(stacker);
+
+  // Toy drum with crossed sticks
+  const drum = new THREE.Group();
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 1, 32),
+    [std('#ff6b6b', 0.5), std('#fff8ee', 0.7), std('#fff8ee', 0.7)]), 0, 0.5, 0, drum);
+  [0.05, 0.95].forEach(y => {
+    const rim = add(new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.07, 8, 32), std('#ffd23f', 0.3)), 0, y, 0, drum);
+    rim.rotation.x = Math.PI / 2;
+  });
+  [-0.5, 0.5].forEach(a => {
+    const stick = add(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.4, 8), std('#e0b07a')), 0, 1.06, 0, drum);
+    stick.rotation.set(Math.PI / 2, 0, a);
+  });
+  drum.position.set(8.6, 0, 2.6);
+  scene.add(drum);
+
+  // Big beach ball
+  add(new THREE.Mesh(new THREE.SphereGeometry(0.9, 32, 20), beachBallMat), -8.6, 0.9, 1.2).rotation.set(0.4, 0.3, 0.2);
+
+  // A little stack of decorative A-B-C blocks on the floor
+  const abc = [['A', '#ff5c8a', 6.0, 0, -7.0, 0.2], ['B', '#3fa7ff', 7.15, 0, -6.8, -0.15], ['C', '#36c26b', 6.6, 1, -6.9, 0.35]];
+  abc.forEach(([L, col, x, y, z, ry]) => {
+    const m = add(new THREE.Mesh(BLOCK_GEO, makeBlockMaterials(L, col).list), x, y + 0.5, z);
+    m.rotation.y = ry;
+  });
+}
+
+// ---------------------------------------------------------------
+//  Shared geometries
+// ---------------------------------------------------------------
+const BLOCK_GEO = new RoundedBoxGeometry(1, 1, 1, 3, 0.12);
+const BALLOON_GEO = new THREE.SphereGeometry(0.5, 28, 20);
+const KNOT_GEO = new THREE.ConeGeometry(0.08, 0.14, 10);
+const STRING_GEO = new THREE.BufferGeometry().setFromPoints(
+  Array.from({ length: 8 }, (_, i) => new THREE.Vector3(Math.sin(i * 1.3) * 0.05, -0.62 - i * 0.18, 0)));
+const STRING_MAT = new THREE.LineBasicMaterial({ color: '#777777' });
+const balloonMats = BALLOON_COLORS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.25, metalness: 0.05 }));
+
+function centeredGeo(geo) { geo.center(); geo.computeBoundingBox(); return geo; }
+const STAR_GEO = (() => {
+  const s = new THREE.Shape();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? 0.24 : 0.55, a = Math.PI / 2 + i * Math.PI / 5;
+    i ? s.lineTo(Math.cos(a) * r, Math.sin(a) * r) : s.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+  }
+  s.closePath();
+  return centeredGeo(new THREE.ExtrudeGeometry(s, { depth: 0.2, bevelEnabled: true, bevelThickness: 0.06, bevelSize: 0.05, bevelSegments: 2 }));
+})();
+const HEART_GEO = (() => {
+  const s = new THREE.Shape();
+  s.moveTo(5, 5);
+  s.bezierCurveTo(5, 5, 4, 0, 0, 0);
+  s.bezierCurveTo(-6, 0, -6, 7, -6, 7);
+  s.bezierCurveTo(-6, 11, -3, 15.4, 5, 19);
+  s.bezierCurveTo(12, 15.4, 16, 11, 16, 7);
+  s.bezierCurveTo(16, 7, 16, 0, 10, 0);
+  s.bezierCurveTo(7, 0, 5, 5, 5, 5);
+  const g = new THREE.ExtrudeGeometry(s, { depth: 4, bevelEnabled: true, bevelThickness: 1.5, bevelSize: 1, bevelSegments: 3 });
+  g.scale(0.045, 0.045, 0.045);
+  g.rotateZ(Math.PI); // the classic three.js heart is drawn point-up
+  return centeredGeo(g);
+})();
+const TOY_DEFS = [
+  { name: 'Star',  geo: STAR_GEO,  mat: new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.3, metalness: 0.1 }) },
+  { name: 'Heart', geo: HEART_GEO, mat: new THREE.MeshStandardMaterial({ color: '#ff4f7b', roughness: 0.35 }) },
+  { name: 'Ball',  geo: centeredGeo(new THREE.SphereGeometry(0.42, 24, 16)), mat: beachBallMat },
+  { name: 'Donut', geo: centeredGeo(new THREE.TorusGeometry(0.3, 0.16, 16, 32)), mat: new THREE.MeshStandardMaterial({ color: '#ff9ecf', roughness: 0.5 }) },
+];
+TOY_DEFS.forEach(d => { const bb = d.geo.boundingBox; d.halfH = (bb.max.y - bb.min.y) / 2; });
+
+buildRoom();
+buildProps();
+
+// ---------------------------------------------------------------
+//  Tiny scheduler + tween system (driven by the render loop)
+// ---------------------------------------------------------------
+let now = 0;                 // game time in seconds
+const timers = [];
+function later(delay, fn) { timers.push({ at: now + delay, fn }); }
+function runTimers() {
+  for (let i = timers.length - 1; i >= 0; i--) {
+    if (timers[i].at <= now) { const t = timers[i]; timers.splice(i, 1); t.fn(); }
+  }
+}
+const tweens = [];
+function tween(dur, onUpdate, onDone) { tweens.push({ t: 0, dur, onUpdate, onDone }); }
+function updateTweens(dt) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    tw.t += dt;
+    const k = Math.min(1, tw.t / tw.dur);
+    tw.onUpdate(k);
+    if (k >= 1) { tweens.splice(i, 1); if (tw.onDone) tw.onDone(); }
+  }
+}
+
+// Squash (s<0) / stretch (s>0) around an object's bottom pivot, volume-preserving-ish
+function applySquash(obj, s) {
+  const sy = Math.max(0.5, 1 + s);
+  const sxz = 1 / Math.sqrt(sy);
+  obj.scale.set(sxz, sy, sxz);
+}
+function stepSpring(o, dt) {
+  o.sqV += (-SPRING_K * o.sq - SPRING_D * o.sqV) * dt;
+  o.sq += o.sqV * dt;
+}
+
+// ---------------------------------------------------------------
+//  Particles: additive sparkles (Points) + confetti (InstancedMesh)
+//  Both are fixed-size ring buffers → object count stays bounded.
+// ---------------------------------------------------------------
+const SPARK_N = 900;
+const sparkGeo = new THREE.BufferGeometry();
+const sPos = new Float32Array(SPARK_N * 3), sCol = new Float32Array(SPARK_N * 3);
+const sSize = new Float32Array(SPARK_N), sAlpha = new Float32Array(SPARK_N);
+const sVel = new Float32Array(SPARK_N * 3), sLife = new Float32Array(SPARK_N), sMax = new Float32Array(SPARK_N), sGrav = new Float32Array(SPARK_N);
+const sBase = new Float32Array(SPARK_N);
+sparkGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3).setUsage(THREE.DynamicDrawUsage));
+sparkGeo.setAttribute('aColor', new THREE.BufferAttribute(sCol, 3).setUsage(THREE.DynamicDrawUsage));
+sparkGeo.setAttribute('aSize', new THREE.BufferAttribute(sSize, 1).setUsage(THREE.DynamicDrawUsage));
+sparkGeo.setAttribute('aAlpha', new THREE.BufferAttribute(sAlpha, 1).setUsage(THREE.DynamicDrawUsage));
+const sparkMat = new THREE.ShaderMaterial({
+  uniforms: { uScale: { value: 500 } },
+  vertexShader: `
+    attribute vec3 aColor; attribute float aSize; attribute float aAlpha;
+    varying vec3 vColor; varying float vAlpha;
+    uniform float uScale;
+    void main() {
+      vColor = aColor; vAlpha = aAlpha;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * uScale / max(0.1, -mv.z);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vColor; varying float vAlpha;
+    void main() {
+      float d = length(gl_PointCoord - 0.5);
+      if (d > 0.5) discard;
+      float a = smoothstep(0.5, 0.0, d);
+      gl_FragColor = vec4(vColor * (0.55 + a), a * vAlpha);
+    }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const sparks = new THREE.Points(sparkGeo, sparkMat);
+sparks.frustumCulled = false;
+scene.add(sparks);
+let sparkCursor = 0;
+const tmpCol = new THREE.Color();
+function emitSpark(x, y, z, vx, vy, vz, hex, size, life, grav = 3) {
+  const i = sparkCursor; sparkCursor = (sparkCursor + 1) % SPARK_N;
+  tmpCol.set(hex);
+  sPos.set([x, y, z], i * 3); sVel.set([vx, vy, vz], i * 3); sCol.set([tmpCol.r, tmpCol.g, tmpCol.b], i * 3);
+  sBase[i] = size; sSize[i] = size; sLife[i] = life; sMax[i] = life; sGrav[i] = grav; sAlpha[i] = 1;
+}
+function burst(pos, count, speed, colors, size = 0.35, life = 1.2, grav = 2.5) {
+  for (let k = 0; k < count; k++) {
+    const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+    const sp = speed * rand(0.7, 1.1);
+    emitSpark(pos.x, pos.y, pos.z, r * Math.cos(th) * sp, u * sp, r * Math.sin(th) * sp,
+      pick(colors), size * rand(0.7, 1.2), life * rand(0.8, 1.2), grav);
+  }
+}
+function updateSparks(dt) {
+  const drag = Math.exp(-1.6 * dt);
+  for (let i = 0; i < SPARK_N; i++) {
+    if (sLife[i] <= 0) continue;
+    sLife[i] -= dt;
+    if (sLife[i] <= 0) { sAlpha[i] = 0; sSize[i] = 0; continue; }
+    const j = i * 3;
+    sVel[j] *= drag; sVel[j + 1] = sVel[j + 1] * drag - sGrav[i] * dt; sVel[j + 2] *= drag;
+    sPos[j] += sVel[j] * dt; sPos[j + 1] += sVel[j + 1] * dt; sPos[j + 2] += sVel[j + 2] * dt;
+    const k = sLife[i] / sMax[i];
+    sAlpha[i] = Math.min(1, k * 1.6) * (0.75 + 0.25 * Math.sin(now * 30 + i));
+    sSize[i] = sBase[i] * (0.4 + 0.6 * k);
+  }
+  for (const n of ['position', 'aSize', 'aAlpha', 'aColor']) sparkGeo.attributes[n].needsUpdate = true;
+}
+
+const CONF_N = 400;
+const confMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.17, 0.1),
+  new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), CONF_N);
+confMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+confMesh.frustumCulled = false;
+const ZERO_M = new THREE.Matrix4().makeScale(0, 0, 0);
+const conf = [];
+for (let i = 0; i < CONF_N; i++) {
+  conf.push({ life: 0, p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), s: new THREE.Vector3() });
+  confMesh.setMatrixAt(i, ZERO_M);
+  confMesh.setColorAt(i, tmpCol.set('#ffffff'));
+}
+scene.add(confMesh);
+let confCursor = 0;
+const dummy = new THREE.Object3D();
+function confettiBurst(center, count, spread = 1, up = 5) {
+  for (let k = 0; k < count; k++) {
+    const i = confCursor; confCursor = (confCursor + 1) % CONF_N;
+    const c = conf[i];
+    c.life = rand(2.2, 3.4);
+    c.p.set(center.x + rand(-spread, spread), center.y + rand(-0.3, 0.3), center.z + rand(-spread, spread) * 0.6);
+    c.v.set(rand(-3, 3), rand(up * 0.5, up), rand(-2, 2));
+    c.r.set(rand(0, 6), rand(0, 6), rand(0, 6));
+    c.s.set(rand(-8, 8), rand(-8, 8), rand(-8, 8));
+    confMesh.setColorAt(i, tmpCol.set(pick(BLOCK_COLORS)));
+  }
+  confMesh.instanceColor.needsUpdate = true;
+}
+function updateConfetti(dt) {
+  const drag = Math.exp(-1.4 * dt);
+  for (let i = 0; i < CONF_N; i++) {
+    const c = conf[i];
+    if (c.life <= 0) continue;
+    c.life -= dt;
+    if (c.life <= 0) { confMesh.setMatrixAt(i, ZERO_M); continue; }
+    c.v.x *= drag; c.v.z *= drag;
+    c.v.y = Math.max(c.v.y - 6 * dt, -1.6);           // flutter down slowly
+    c.p.addScaledVector(c.v, dt);
+    c.p.x += Math.sin(now * 5 + i) * 0.5 * dt;
+    if (c.p.y < 0.02) c.p.y = 0.02;
+    c.r.x += c.s.x * dt; c.r.y += c.s.y * dt; c.r.z += c.s.z * dt;
+    dummy.position.copy(c.p); dummy.rotation.copy(c.r);
+    dummy.scale.setScalar(Math.min(1, c.life / 0.5));
+    dummy.updateMatrix();
+    confMesh.setMatrixAt(i, dummy.matrix);
+  }
+  confMesh.instanceMatrix.needsUpdate = true;
+}
+
+// Fireworks: a rocket leaves a sparkly trail, then bursts
+const rockets = [];
+function launchRocket(delay = 0) {
+  later(delay, () => {
+    rockets.push({
+      p: new THREE.Vector3(rand(-6, 6), 0.3, rand(-6, -3.5)),
+      v: new THREE.Vector3(rand(-0.8, 0.8), rand(10, 11.5), rand(-0.4, 0.4)),
+      color: pick(SPARK_COLORS),
+      burstNdc: rand(0.35, 0.65),   // burst while still comfortably on screen
+    });
+    sfx.launch();
+  });
+}
+function updateRockets(dt) {
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i];
+    r.v.y -= 9 * dt;
+    r.p.addScaledVector(r.v, dt);
+    emitSpark(r.p.x, r.p.y, r.p.z, rand(-0.3, 0.3), rand(-1, 0), rand(-0.3, 0.3), '#fff2b0', 0.22, 0.4, 1);
+    _ndc.copy(r.p).project(camera);
+    if (r.v.y < 2 || _ndc.y > r.burstNdc) {
+      burst(r.p, 80, 5.5, [r.color, r.color, pick(SPARK_COLORS), '#ffffff'], 0.4, 1.4, 2.2);
+      sfx.boom();
+      rockets.splice(i, 1);
+    }
+  }
+}
+function fireworks(n = 3) { for (let i = 0; i < n; i++) launchRocket(i * 0.28); }
+
+// ---------------------------------------------------------------
+//  Pop-up sprites (emoji above blocks, word celebrations)
+// ---------------------------------------------------------------
+const sprites = [];
+function popSprite(tex, pos, size = 1.6, rise = 1.8, life = 1.7) {
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const s = new THREE.Sprite(mat);
+  s.position.copy(pos); s.scale.setScalar(0.01); s.renderOrder = 10;
+  scene.add(s);
+  sprites.push({ s, mat, age: 0, life, size, rise, y0: pos.y });
+  if (sprites.length > 14) removeSprite(0);
+}
+function removeSprite(i) {
+  const sp = sprites[i];
+  scene.remove(sp.s);
+  sp.mat.dispose();            // textures are cached and shared, so only the material goes
+  sprites.splice(i, 1);
+}
+function updateSprites(dt) {
+  for (let i = sprites.length - 1; i >= 0; i--) {
+    const sp = sprites[i];
+    sp.age += dt;
+    const k = sp.age / sp.life;
+    if (k >= 1) { removeSprite(i); continue; }
+    const grow = easeOutBack(Math.min(1, sp.age / 0.35));
+    sp.s.scale.setScalar(Math.max(0.01, sp.size * grow));
+    sp.s.position.y = sp.y0 + sp.rise * easeOutCubic(k);
+    sp.mat.opacity = k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4;
+  }
+}
+
+// ---------------------------------------------------------------
+//  Alphabet blocks
+// ---------------------------------------------------------------
+const blocks = [];     // blocks sitting in rows, in typed order
+const tumbling = [];   // blocks falling off the rug (removed after a moment)
+let lastColor = null;
+
+function slotPos(slot) {
+  const row = Math.floor(slot / PER_ROW), col = slot % PER_ROW;
+  return { x: (col - (PER_ROW - 1) / 2) * SLOT_GAP, z: ROW_Z[row] };
+}
+
+function createBlock(letter, at = slotPos(blocks.length)) {
+  let color;
+  do { color = pick(BLOCK_COLORS); } while (color === lastColor);
+  lastColor = color;
+  const mats = makeBlockMaterials(letter, color);
+  const mesh = new THREE.Mesh(BLOCK_GEO, mats.list);
+  mesh.position.y = 0.5;               // group pivot sits at the block's bottom
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.rotation.set(0, rand(-0.5, 0.5), rand(-0.4, 0.4)); // wobbles straight while falling
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.position.set(at.x, rand(6.5, 7.2), at.z);
+  scene.add(group);
+  return {
+    letter, color, group, mesh, mats: mats.unique, index: letter.charCodeAt(0) - 65,
+    vy: 0, vx: 0, vz: 0, spin: new THREE.Vector3(),
+    grounded: false, landed: false, sq: 0, sqV: 0, glow: 0,
+    state: 'row', age: 0, onLand: null,
+  };
+}
+
+function disposeBlock(b) {
+  scene.remove(b.group);
+  b.mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+}
+
+function hop(o, v = 6) { o.vy = v; o.grounded = false; }
+
+function updateRowBlock(b, dt) {
+  const ease = 1 - Math.exp(-7 * dt);
+  b.mesh.rotation.y -= b.mesh.rotation.y * ease;
+  b.mesh.rotation.z -= b.mesh.rotation.z * ease;
+  const p = b.group.position;
+  if (!b.grounded) {
+    b.vy -= G * dt;
+    p.y += b.vy * dt;
+    if (p.y <= RUG_TOP) {
+      p.y = RUG_TOP;
+      const impact = -b.vy;
+      b.sq = -clamp(impact * 0.022, 0.08, 0.38); b.sqV = 0;
+      if (!b.landed) {
+        b.landed = true;
+        sfx.plonk(b.index);
+        if (b.onLand) { const f = b.onLand; b.onLand = null; f(); }
+      }
+      if (impact > 4) b.vy = impact * 0.3;      // a little bounce
+      else { b.vy = 0; b.grounded = true; }
+    }
+  }
+  stepSpring(b, dt);
+  const air = b.grounded ? 0 : Math.min(0.18, Math.abs(b.vy) * 0.012);
+  applySquash(b.group, b.sq + air);
+  // word glow: a warm pulsing emissive light
+  if (b.glow > 0) {
+    b.glow = Math.max(0, b.glow - dt);
+    const inten = (b.glow / 1.8) * (0.55 + 0.45 * Math.sin(now * 14));
+    b.mats.forEach(m => { m.emissiveIntensity = inten * 0.8; });
+  }
+}
+
+function startTumble(b) {
+  b.state = 'tumble'; b.age = 0; b.grounded = false; b.glow = 0;
+  b.mats.forEach(m => { m.emissiveIntensity = 0; });
+  b.group.scale.set(1, 1, 1);
+  const dir = new THREE.Vector2(b.group.position.x, b.group.position.z + 0.4);
+  if (dir.length() < 0.3) dir.set(rand(-1, 1), 1);
+  dir.normalize().rotateAround(new THREE.Vector2(), rand(-0.35, 0.35));
+  const sp = rand(3.4, 5.6);
+  b.vx = dir.x * sp; b.vz = dir.y * sp; b.vy = rand(4, 7.5);
+  b.spin.set(rand(-7, 7), rand(-4, 4), rand(-7, 7));
+  tumbling.push(b);
+  if (tumbling.length > 60) disposeBlock(tumbling.shift());
+}
+
+function updateTumble(b, dt) {
+  b.age += dt;
+  const p = b.group.position;
+  b.vy -= G * 0.75 * dt;
+  p.x += b.vx * dt; p.y += b.vy * dt; p.z += b.vz * dt;
+  b.mesh.rotation.x += b.spin.x * dt; b.mesh.rotation.y += b.spin.y * dt; b.mesh.rotation.z += b.spin.z * dt;
+  const floorY = Math.hypot(p.x, p.z) < RUG_R ? RUG_TOP : 0;
+  if (p.y < floorY && b.vy < 0) {               // bounce on rug / floor, lose energy
+    p.y = floorY;
+    b.vy = -b.vy * 0.38;
+    if (b.vy < 1.2) b.vy = 0;
+    b.vx *= 0.75; b.vz *= 0.75; b.spin.multiplyScalar(0.65);
+    if (b.kick) {                               // Spell It! wrong letter: boing off and roll away
+      b.vx = b.kick.x; b.vz = b.kick.z; b.vy = Math.max(b.vy, 3.5);
+      b.spin.set(b.kick.z * 2.2, rand(-2, 2), -b.kick.x * 2.2);
+      b.kick = null;
+      sfx.boop();
+    }
+  }
+  if (b.vy === 0 && p.y <= floorY + 0.001) { const f = Math.exp(-3 * dt); b.vx *= f; b.vz *= f; b.spin.multiplyScalar(f); }
+  if (b.age > 2.4) {                            // shrink away, then free GPU memory
+    const s = Math.max(0, 1 - (b.age - 2.4) / 0.5);
+    b.group.scale.setScalar(s);
+    return s > 0;
+  }
+  return true;
+}
+
+// Clear the rug: every block tumbles off with fireworks
+function clearAll(auto = false) {
+  const had = blocks.length > 0;
+  blocks.forEach(startTumble);
+  blocks.length = 0;
+  if (had) sfx.tumble();
+  fireworks(auto ? 3 : 4);
+  if (!auto) speak(had ? 'Wheee! All clean!' : 'Fireworks!');
+}
+
+// ---------------------------------------------------------------
+//  Letter key → block
+// ---------------------------------------------------------------
+function handleLetter(L) {
+  if (blocks.length >= MAX_BLOCKS) clearAll(true);   // 3 rows full → auto tidy-up
+  const b = createBlock(L);
+  blocks.push(b);
+  sfx.whoop();
+  const [emoji, word] = LETTERS[L];
+  speak(`${L}! ${word}!`);
+
+  // When it lands: the picture pops out above the block
+  b.onLand = () => {
+    const p = b.group.position;
+    popSprite(emojiTexture(emoji), new THREE.Vector3(p.x, RUG_TOP + 1.5, p.z), 1.5, 1.6, 1.6);
+    burst(new THREE.Vector3(p.x, RUG_TOP + 0.2, p.z), 14, 2.5, [b.color, '#ffffff', '#ffd23f'], 0.22, 0.6, 3);
+  };
+
+  // Easter egg: did the last few letters spell a word?
+  const seq = blocks.map(x => x.letter).join('');
+  const w = WORD_KEYS.find(k => seq.endsWith(k));
+  if (w) {
+    const wordBlocks = blocks.slice(-w.length);
+    const prev = b.onLand;
+    b.onLand = () => { prev(); later(0.25, () => celebrateWord(w, wordBlocks)); };
+  }
+}
+
+function celebrateWord(word, wordBlocks, emoji = WORDS[word]) {
+  const alive = wordBlocks.filter(b => blocks.includes(b));
+  if (!alive.length) return;
+  const c = new THREE.Vector3();
+  alive.forEach((b, i) => {
+    c.add(b.group.position);
+    b.glow = 1.8;
+    b.mats.forEach(m => m.emissive.set('#fff1a8'));
+    later(i * 0.08, () => { if (b.state === 'row') hop(b, 6.5); });
+  });
+  c.divideScalar(alive.length);
+  popSprite(wordTexture(word, emoji), new THREE.Vector3(c.x, RUG_TOP + 3, c.z), 3.4, 1.2, 2.8);
+  confettiBurst(new THREE.Vector3(c.x, RUG_TOP + 5, c.z), 120, 2.5, 4);
+  burst(new THREE.Vector3(c.x, RUG_TOP + 3, c.z), 40, 4, SPARK_COLORS, 0.3, 1.2, 1.5);
+  sfx.chime();
+  speak(`${[...word].join(', ')}... ${titleCase(word)}!`, false);
+}
+
+// ---------------------------------------------------------------
+//  Number keys → balloons
+// ---------------------------------------------------------------
+const balloons = [];
+let countToken = 0;
+const _ndc = new THREE.Vector3();
+
+function spawnBalloon(num, giant = false) {
+  const mat = pick(balloonMats);
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(BALLOON_GEO, mat);
+  body.scale.set(1, 1.18, 1);
+  body.castShadow = true;
+  const knot = new THREE.Mesh(KNOT_GEO, mat);
+  knot.position.y = -0.62; knot.rotation.x = Math.PI;
+  g.add(body, knot, new THREE.Line(STRING_GEO, STRING_MAT));
+  if (num) {
+    const label = new THREE.Sprite(numberSpriteMaterial(num));
+    label.scale.setScalar(0.62); label.renderOrder = 11;
+    g.add(label);
+  }
+  const size = giant ? 2.8 : rand(0.95, 1.15);
+  const front = Math.random() < 0.4;
+  // back balloons anywhere; front balloons stay to the sides so they don't hide the blocks
+  const bx = giant ? rand(-1.5, 1.5) : front ? (Math.random() < 0.5 ? -1 : 1) * rand(4.4, 6) : rand(-5.5, 5.5);
+  g.position.set(bx, RUG_TOP + 1.95 * size,
+                 giant ? -3 : (front ? rand(3.2, 4.6) : rand(-5, -3.2)));
+  g.scale.setScalar(0.01);
+  scene.add(g);
+  const bl = { g, size, age: 0, phase: rand(0, 6), vy: giant ? 0.75 : rand(1.3, 1.8),
+               popNdc: giant ? 0.45 : rand(0.62, 0.82), giant, color: mat.color.getHexString() };
+  balloons.push(bl);
+  if (balloons.length > 30) popBalloon(0);
+}
+
+function popBalloon(i) {
+  const bl = balloons[i];
+  const p = bl.g.position.clone(); p.y += 0.3 * bl.size;
+  burst(p, bl.giant ? 90 : 26, bl.giant ? 6 : 3.5, ['#' + bl.color, '#ffffff', '#ffd23f'], bl.giant ? 0.45 : 0.28, 0.9, 1.5);
+  confettiBurst(p, bl.giant ? 60 : 10, bl.giant ? 1.5 : 0.4, 3);
+  sfx.pop(bl.giant);
+  scene.remove(bl.g);          // geometries and materials are shared → nothing to dispose
+  balloons.splice(i, 1);
+}
+
+function updateBalloons(dt) {
+  for (let i = balloons.length - 1; i >= 0; i--) {
+    const bl = balloons[i];
+    bl.age += dt;
+    const inflate = Math.min(1, bl.age / 0.4);
+    bl.g.scale.setScalar(Math.max(0.01, bl.size * easeOutBack(inflate)));
+    const lift = Math.min(1, bl.age / 0.6);        // ease into rising
+    bl.g.position.y += bl.vy * lift * dt;
+    bl.g.position.x += Math.sin(now * 1.3 + bl.phase) * 0.35 * dt;
+    bl.g.rotation.z = Math.sin(now * 1.7 + bl.phase) * 0.12;
+    // pop near the top of the *screen* (works for any aspect ratio / camera distance)
+    _ndc.copy(bl.g.position).project(camera);
+    if (_ndc.y > bl.popNdc || bl.g.position.y > 14) popBalloon(i);
+  }
+}
+
+function handleNumber(n) {
+  const token = ++countToken;          // a new number key cancels an unfinished count
+  if (n === 0) {
+    spawnBalloon(0, true);
+    sfx.giant();
+    speak('Zero! One giant balloon!');
+    return;
+  }
+  for (let i = 1; i <= n; i++) {
+    later((i - 1) * 0.65, () => {
+      if (token !== countToken) return;
+      spawnBalloon(i);
+      sfx.count(i);
+      speak(i === n ? `${i}!` : `${i}`, i === 1);
+    });
+  }
+}
+
+// ---------------------------------------------------------------
+//  Other keys → a bouncy toy (star / heart / ball / donut)
+// ---------------------------------------------------------------
+const toys = [];
+function spawnToy() {
+  const def = pick(TOY_DEFS);
+  const mesh = new THREE.Mesh(def.geo, def.mat);
+  mesh.position.y = def.halfH;
+  mesh.castShadow = true;
+  const group = new THREE.Group();
+  group.add(mesh);
+  // fly in from beyond the rug toward a free-ish spot near the rug's edge
+  const ang = rand(-0.2, Math.PI + 0.2);       // mostly the front half
+  const tr = rand(5.2, 6.2);
+  const target = new THREE.Vector3(Math.cos(ang) * tr, RUG_TOP, Math.sin(ang) * tr * 0.9);
+  const startA = ang + rand(-0.6, 0.6);
+  group.position.set(Math.cos(startA) * 11, 4.5, Math.sin(startA) * 9);
+  const T = 0.9;
+  const toy = {
+    def, group, mesh, sq: 0, sqV: 0, grounded: false, spinY: rand(4, 8) * (Math.random() < 0.5 ? -1 : 1),
+    vx: (target.x - group.position.x) / T, vz: (target.z - group.position.z) / T,
+    vy: (target.y - group.position.y + 0.5 * G * T * T) / T,
+  };
+  scene.add(group);
+  toys.push(toy);
+  if (toys.length > 8) retireToy(toys.shift());
+  sfx.squeak();
+  speak(`${def.name}!`);
+}
+function retireToy(t) {
+  // shrink then remove (geometry/material are shared)
+  t.retired = true;
+  tween(0.35, k => t.group.scale.setScalar(Math.max(0.001, 1 - k)), () => scene.remove(t.group));
+}
+function updateToy(t, dt) {
+  const p = t.group.position;
+  if (!t.grounded) {
+    t.vy -= G * dt;
+    p.x += t.vx * dt; p.y += t.vy * dt; p.z += t.vz * dt;
+    t.mesh.rotation.y += t.spinY * dt;
+    t.mesh.rotation.x += t.spinY * 0.4 * dt;
+    const floorY = Math.hypot(p.x, p.z) < RUG_R ? RUG_TOP : 0;
+    if (p.y <= floorY && t.vy < 0) {
+      p.y = floorY;
+      const impact = -t.vy;
+      t.sq = -clamp(impact * 0.025, 0.08, 0.4); t.sqV = 0;
+      if (impact > 2.5) { t.vy = impact * 0.5; t.vx *= 0.55; t.vz *= 0.55; }
+      else { t.vy = 0; t.vx = t.vz = 0; t.grounded = true; }
+    }
+  } else {
+    const e = 1 - Math.exp(-5 * dt);
+    t.mesh.rotation.x -= t.mesh.rotation.x * e;
+    t.mesh.rotation.z -= t.mesh.rotation.z * e;
+    t.mesh.rotation.y += 0.8 * dt;          // gentle display spin
+  }
+  stepSpring(t, dt);
+  if (!t.retired) applySquash(t.group, t.sq + (t.grounded ? 0 : Math.min(0.15, Math.abs(t.vy) * 0.01)));
+}
+
+// ---------------------------------------------------------------
+//  Space → everyone hops!
+// ---------------------------------------------------------------
+function hopAll() {
+  blocks.forEach((b, i) => later(i * 0.03, () => { if (b.state === 'row') hop(b, rand(5.5, 6.5)); }));
+  toys.forEach(t => { if (!t.retired) { t.vy = 6; t.grounded = false; } });
+  sfx.boing();
+  if (!blocks.length && !toys.length) {
+    burst(new THREE.Vector3(0, RUG_TOP + 0.5, 0), 40, 4, SPARK_COLORS, 0.3, 1, 3);
+  }
+}
+
+// ---------------------------------------------------------------
+//  Spell It! mode — copy the picture's word, letter by letter.
+//  No timer, no penalty: a wrong letter just boings away.
+// ---------------------------------------------------------------
+// Emoji kept to Unicode ≤ 13 so they render on older macOS too
+const SPELL_WORDS = {
+  1: { CAT: '🐱', DOG: '🐶', SUN: '☀️', BUS: '🚌', PIG: '🐷', COW: '🐮', HAT: '🎩', BEE: '🐝', CAR: '🚗', BED: '🛏️',
+       EGG: '🥚', FOX: '🦊', OWL: '🦉', ANT: '🐜', BAT: '🦇', HEN: '🐔', KEY: '🔑', CUP: '☕', BOX: '📦', MAP: '🗺️' },
+  2: { STAR: '⭐', FISH: '🐟', CAKE: '🎂', FROG: '🐸', DUCK: '🦆', BALL: '⚽', TREE: '🌳', BEAR: '🐻', MOON: '🌙', BOAT: '⛵',
+       LION: '🦁', BIRD: '🐦', MILK: '🥛', SHOE: '👟', BOOK: '📖', KITE: '🪁', DOOR: '🚪', SOCK: '🧦', CORN: '🌽', BELL: '🔔' },
+  3: { APPLE: '🍎', HOUSE: '🏠', TIGER: '🐯', HORSE: '🐴', PIZZA: '🍕', ZEBRA: '🦓', SNAKE: '🐍', TRAIN: '🚂', CLOUD: '☁️', MOUSE: '🐭',
+       SHEEP: '🐑', TRUCK: '🚚', CANDY: '🍬', BREAD: '🍞', LEMON: '🍋', ROBOT: '🤖', PLANE: '✈️', WHALE: '🐳', SHARK: '🦈', CLOCK: '⏰' },
+};
+const WORDS_PER_LEVEL = 5;
+const MAX_LEVEL = 3;
+const SPELL_Z = 0.2;                       // z of the row of letter slots on the rug
+
+const spell = {
+  level: 1, stars: 0, done: 0,             // done = words finished in this level
+  word: null, emoji: null, idx: 0,         // current target and next letter index
+  ghosts: [], picture: null, busy: false,
+  token: 0, recent: [], wiggle: 0,
+};
+
+// Run fn later only if Spell It! is still the same session (Esc / restart cancels it)
+function spellLater(delay, fn) {
+  const t = spell.token;
+  later(delay, () => { if (t === spell.token && mode === 'spell') fn(); });
+}
+
+// Faint letter for an empty slot (cached per letter, never disposed)
+const ghostTexCache = new Map();
+function ghostTexture(L) {
+  if (!ghostTexCache.has(L)) {
+    const [c, g] = makeCanvas(256);
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    roundRectPath(g, 14, 14, 228, 228, 30); g.fill();
+    g.setLineDash([22, 14]); g.lineWidth = 10; g.strokeStyle = 'rgba(122,79,214,0.85)';
+    roundRectPath(g, 14, 14, 228, 228, 30); g.stroke();
+    g.setLineDash([]);
+    g.font = `bold 170px ${KID_FONT}`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = 'rgba(122,79,214,0.6)';
+    g.fillText(L, 128, 140);
+    ghostTexCache.set(L, toTexture(c));
+  }
+  return ghostTexCache.get(L);
+}
+
+// Banner sprites ("Level up!") reuse the word texture: picture on top, rainbow text below
+function bannerTexture(text, emoji) { return wordTexture(text, emoji); }
+
+const COL_WHITE = new THREE.Color('#ffffff'), COL_ACTIVE = new THREE.Color('#fff3a0'), COL_BOOST = new THREE.Color('#ffd23f');
+
+// A see-through "ghost" block marking where the next letter goes
+function makeGhost(L, x, z, delay) {
+  const front = new THREE.MeshBasicMaterial({ map: ghostTexture(L), transparent: true, opacity: 0.6, depthWrite: false });
+  const side = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.2, depthWrite: false });
+  const mesh = new THREE.Mesh(BLOCK_GEO, [side, side, side, side, front, front]);
+  mesh.position.y = 0.5;
+  const group = new THREE.Group();
+  group.add(mesh);
+  group.position.set(x, RUG_TOP + 0.01, z);
+  group.scale.setScalar(0.001);
+  scene.add(group);
+  return { L, group, front, side, appear: -delay, boost: 0, gone: false };
+}
+function removeGhost(g) {
+  if (g.gone) return;
+  g.gone = true;
+  const s0 = g.group.scale.x;
+  tween(0.25, k => g.group.scale.setScalar(Math.max(0.001, s0 * (1 - k))), () => {
+    scene.remove(g.group);
+    g.front.dispose(); g.side.dispose();     // the letter texture is cached
+  });
+}
+function removePicture() {
+  const pic = spell.picture;
+  if (!pic) return;
+  spell.picture = null;
+  const s0 = pic.sprite.scale.x;
+  tween(0.3, k => pic.sprite.scale.setScalar(Math.max(0.001, s0 * (1 - k))), () => {
+    scene.remove(pic.sprite); pic.mat.dispose();
+  });
+}
+function clearWordVisuals() {
+  spell.ghosts.forEach(removeGhost);
+  spell.ghosts = [];
+  removePicture();
+}
+
+// HUD: level, progress dots for this level, stars collected
+const hud = document.getElementById('hud');
+const hudLevel = document.getElementById('hud-level');
+const hudProg = document.getElementById('hud-prog');
+const hudStars = document.getElementById('hud-stars');
+function updateHUD(bump = false) {
+  hudLevel.textContent = `Level ${spell.level}`;
+  hudProg.textContent = '●'.repeat(spell.done) + '○'.repeat(WORDS_PER_LEVEL - spell.done);
+  hudStars.textContent = `⭐ ${spell.stars}`;
+  if (bump) { hudStars.classList.remove('bump'); void hudStars.offsetWidth; hudStars.classList.add('bump'); }
+}
+
+function startSpell(level) {
+  spell.token++;
+  spell.level = level;
+  spell.done = 0;
+  spell.busy = false;
+  spell.word = null;
+  clearWordVisuals();
+  hud.classList.add('show');
+  updateHUD();
+  spellLater(0.5, nextWord);
+}
+function stopSpell() {
+  spell.token++;
+  spell.word = null;
+  spell.busy = false;
+  clearWordVisuals();
+  hud.classList.remove('show');
+}
+
+function nextWord() {
+  const list = Object.keys(SPELL_WORDS[spell.level]);
+  let w, tries = 0;
+  do { w = pick(list); } while (spell.recent.includes(w) && ++tries < 30);
+  spell.recent.push(w);
+  if (spell.recent.length > 5) spell.recent.shift();
+  spell.word = w;
+  spell.emoji = SPELL_WORDS[spell.level][w];
+  spell.idx = 0;
+  spell.busy = false;
+  const n = w.length;
+  spell.ghosts = [...w].map((L, i) => makeGhost(L, (i - (n - 1) / 2) * SLOT_GAP, SPELL_Z, i * 0.08));
+  // the target picture floats above the rug
+  const mat = new THREE.SpriteMaterial({ map: emojiTexture(spell.emoji), transparent: true, depthWrite: false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.position.set(0, RUG_TOP + 3.3, SPELL_Z - 1.6);
+  sprite.scale.setScalar(0.01);
+  sprite.renderOrder = 9;
+  scene.add(sprite);
+  spell.picture = { sprite, mat, age: 0, y0: RUG_TOP + 3.3 };
+  sfx.whoop();
+  speak(`${titleCase(w)}! Spell ${w.toLowerCase()}!`);
+  updateHUD();
+}
+
+function spellKey(letter, key) {
+  if (key === 'Enter') { skipWord(); return; }
+  if (!letter || !spell.word || spell.busy) { spell.wiggle = 0.4; return; }   // harmless wiggle
+  const target = spell.word[spell.idx];
+  if (letter === target) placeCorrect(letter);
+  else dropWrong(letter, target);
+}
+
+// Right letter: the block drops into its slot
+function placeCorrect(L) {
+  const g = spell.ghosts[spell.idx];
+  const b = createBlock(L, g.group.position);
+  blocks.push(b);
+  removeGhost(g);
+  spell.idx++;
+  sfx.whoop();
+  speak(`${L}!`);
+  b.onLand = () => {
+    const p = b.group.position;
+    burst(new THREE.Vector3(p.x, RUG_TOP + 0.2, p.z), 16, 2.5, [b.color, '#ffffff', '#ffd23f'], 0.22, 0.6, 3);
+  };
+  if (spell.idx >= spell.word.length) {
+    spell.busy = true;
+    const word = spell.word, emoji = spell.emoji, wordBlocks = blocks.slice();
+    const prev = b.onLand;
+    b.onLand = () => { prev(); spellLater(0.25, () => wordDone(word, emoji, wordBlocks)); };
+  }
+}
+
+// Wrong letter: it drops in front of the row, boings off and rolls away
+function dropWrong(L, target) {
+  const g = spell.ghosts[spell.idx];
+  const gx = g.group.position.x;
+  const b = createBlock(L, { x: gx + rand(-0.3, 0.3), z: SPELL_Z + 1.5 });
+  b.group.position.y = 4.5;
+  b.state = 'tumble'; b.age = 0;
+  b.vx = 0; b.vz = 0; b.vy = 0;
+  b.spin.set(0, rand(-1, 1), 0);
+  const side = gx >= 0 ? 1 : -1;
+  b.kick = { x: side * rand(3, 4.2), z: rand(2.5, 3.5) };
+  tumbling.push(b);
+  if (tumbling.length > 60) disposeBlock(tumbling.shift());
+  g.boost = 1.6;                              // the right slot pulses brighter
+  speak(`Find ${target}!`);
+}
+
+function wordDone(word, emoji, wordBlocks) {
+  removePicture();
+  celebrateWord(word, wordBlocks, emoji);
+  spell.stars++;
+  spell.done++;
+  updateHUD(true);
+  spellLater(2.8, () => {
+    if (blocks.length) { blocks.forEach(startTumble); blocks.length = 0; sfx.tumble(); }
+    clearWordVisuals();
+    if (spell.done >= WORDS_PER_LEVEL) {
+      spell.done = 0;
+      const up = spell.level < MAX_LEVEL;
+      if (up) { spell.level++; store.set('mlb.level', String(spell.level)); }
+      popSprite(up ? bannerTexture('Level up!', '🏆') : bannerTexture('Super speller!', '🌟'),
+        new THREE.Vector3(0, RUG_TOP + 2.6, 0), 4.2, 1.2, 2.6);
+      confettiBurst(new THREE.Vector3(0, RUG_TOP + 5.5, 0), 160, 4, 4);
+      fireworks(4);
+      sfx.chime();
+      speak(up ? `Level up! Level ${spell.level}!` : 'Super speller!');
+      updateHUD();
+      spellLater(3, nextWord);
+    } else {
+      spellLater(0.9, nextWord);
+    }
+  });
+}
+
+// Enter: skip to a new word (no star, no penalty)
+function skipWord() {
+  if (!spell.word || spell.busy) { spell.wiggle = 0.4; return; }
+  spell.busy = true;
+  spell.word = null;
+  if (blocks.length) { blocks.forEach(startTumble); blocks.length = 0; sfx.tumble(); }
+  clearWordVisuals();
+  spellLater(0.7, nextWord);
+}
+
+// Tap in Spell It!: wiggle the picture and say the letter we're looking for
+function spellHint() {
+  spell.wiggle = 0.4;
+  if (spell.word && !spell.busy) {
+    const g = spell.ghosts[spell.idx];
+    if (g) g.boost = 1.2;
+    speak(`Find ${spell.word[spell.idx]}!`);
+  }
+}
+
+function updateSpell(dt) {
+  spell.wiggle = Math.max(0, spell.wiggle - dt);
+  spell.ghosts.forEach((g, i) => {
+    if (g.gone) return;
+    g.appear += dt;
+    g.boost = Math.max(0, g.boost - dt);
+    const grow = g.appear <= 0 ? 0.001 : easeOutBack(Math.min(1, g.appear / 0.35));
+    const active = i === spell.idx && !spell.busy;
+    const pulse = active ? 0.5 + 0.5 * Math.sin(now * (6 + g.boost * 5)) : 0;
+    const boost = Math.min(1, g.boost);
+    g.group.scale.setScalar(Math.max(0.001, grow * (1 + 0.06 * pulse + 0.12 * boost * pulse)));
+    g.group.position.y = RUG_TOP + 0.01 + (active ? 0.12 * pulse + 0.25 * boost * pulse : 0);   // the next slot bobs
+    g.front.opacity = active ? 0.7 + 0.3 * pulse : 0.45;
+    g.side.opacity = active ? 0.25 + 0.3 * pulse + 0.3 * boost : 0.15;
+    g.side.color.copy(active ? (boost > 0 ? COL_BOOST : COL_ACTIVE) : COL_WHITE);
+  });
+  const pic = spell.picture;
+  if (pic) {
+    pic.age += dt;
+    const grow = easeOutBack(Math.min(1, pic.age / 0.5));
+    const w = Math.sin(now * 30) * spell.wiggle * 0.3;
+    pic.sprite.scale.setScalar(Math.max(0.01, 2.6 * grow * (1 + Math.abs(w) * 0.5)));
+    pic.mat.rotation = w;
+    pic.sprite.position.y = pic.y0 + Math.sin(now * 2) * 0.15;
+  }
+}
+
+// ---------------------------------------------------------------
+//  Title screen, modes & input
+// ---------------------------------------------------------------
+// localStorage may be blocked (private mode, sandbox) — never let that break the game
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+};
+
+let started = false;
+let mode = null;                                  // 'free' | 'spell' while playing
+let selectedMode = store.get('mlb.mode', 'free') === 'spell' ? 'spell' : 'free';
+spell.level = clamp(parseInt(store.get('mlb.level', '1'), 10) || 1, 1, MAX_LEVEL);
+
+const overlay = document.getElementById('overlay');
+const btnFree = document.getElementById('btn-free');
+const btnSpell = document.getElementById('btn-spell');
+const levelsEl = document.getElementById('levels');
+const lvlBtns = [...document.querySelectorAll('.lvl-btn')];
+const goBtn = document.getElementById('go-btn');
+const hintsFree = document.getElementById('hints-free');
+const hintsSpell = document.getElementById('hints-spell');
+
+function renderTitle() {
+  btnFree.classList.toggle('selected', selectedMode === 'free');
+  btnSpell.classList.toggle('selected', selectedMode === 'spell');
+  levelsEl.hidden = selectedMode !== 'spell';
+  hintsFree.hidden = selectedMode !== 'free';
+  hintsSpell.hidden = selectedMode !== 'spell';
+  lvlBtns.forEach(b => b.classList.toggle('selected', +b.dataset.level === spell.level));
+  goBtn.textContent = selectedMode === 'free' ? '▶ Play! (Space)' : `▶ Play Level ${spell.level}! (Space)`;
+}
+function selectMode(m) {
+  selectedMode = m;
+  store.set('mlb.mode', m);
+  renderTitle();
+}
+function selectLevel(l) {
+  spell.level = l;
+  store.set('mlb.level', String(l));
+  renderTitle();
+}
+function startMode(m, level) {
+  ensureAudio();                                  // inside the user gesture
+  selectMode(m);
+  if (level) selectLevel(level);
+  started = true;
+  mode = m;
+  overlay.classList.add('hide');
+  if (m === 'spell') startSpell(spell.level);
+  else speak("Let's play!");
+}
+function backToTitle() {
+  stopSpell();
+  countToken++;                                   // stop any balloon count in progress
+  if (blocks.length) { blocks.forEach(startTumble); blocks.length = 0; sfx.tumble(); }
+  toys.splice(0).forEach(t => { if (!t.retired) retireToy(t); });
+  if (synth) { try { synth.cancel(); } catch (e) { /* ignore */ } }
+  started = false;
+  mode = null;
+  renderTitle();
+  overlay.classList.remove('hide');
+}
+function wiggleGo() {
+  goBtn.classList.remove('wiggle'); void goBtn.offsetWidth; goBtn.classList.add('wiggle');
+}
+// Title keys: 1 = Free Play, 2 = Spell It!, 3/4/5 = Spell It! level 1/2/3, Space/Enter = remembered choice
+function titleKey(key) {
+  if (key === '1') startMode('free');
+  else if (key === '2') { selectMode('spell'); sfx.whoop(); }
+  else if (key === '3' || key === '4' || key === '5') startMode('spell', +key - 2);
+  else if (key === ' ' || key === 'Enter') startMode(selectedMode);
+  else wiggleGo();
+}
+
+btnFree.addEventListener('click', () => startMode('free'));
+btnSpell.addEventListener('click', () => { ensureAudio(); selectMode('spell'); sfx.whoop(); });
+lvlBtns.forEach(b => b.addEventListener('click', () => startMode('spell', +b.dataset.level)));
+goBtn.addEventListener('click', () => startMode(selectedMode));
+goBtn.addEventListener('animationend', () => goBtn.classList.remove('wiggle'));
+overlay.addEventListener('pointerdown', () => ensureAudio());
+renderTitle();
+
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Fn', 'FnLock', 'AltGraph', 'OS', 'Hyper', 'Super', 'Dead', 'Unidentified']);
+
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey) return;      // leave browser shortcuts alone
+  e.preventDefault();                      // no scrolling / back-navigation
+  if (e.repeat) return;
+  const key = e.key || '';
+  if (MODIFIER_KEYS.has(key)) return;
+  ensureAudio();
+
+  let letter = null, digit = null;
+  if (/^[a-z]$/i.test(key)) letter = key.toUpperCase();
+  else if (e.altKey && /^Key[A-Z]$/.test(e.code)) letter = e.code.slice(3);      // Option+letter on Mac
+  if (/^[0-9]$/.test(key)) digit = +key;
+  else if (e.altKey && /^(Digit|Numpad)[0-9]$/.test(e.code)) digit = +e.code.slice(-1);
+
+  if (!started) { titleKey(digit !== null ? String(digit) : (e.code === 'Space' ? ' ' : key)); return; }
+  if (key === 'Escape') { backToTitle(); return; }
+  if (mode === 'spell') { spellKey(letter, key); return; }
+
+  // Free Play: every key does something
+  if (letter) handleLetter(letter);
+  else if (digit !== null) handleNumber(digit);
+  else if (key === ' ' || e.code === 'Space') hopAll();
+  else if (key === 'Enter' || key === 'Backspace' || key === 'Delete') clearAll(false);
+  else spawnToy();
+});
+
+// Tap / click (tablets): Free Play drops a random letter block; Spell It! gives a hint
+function onTap(e) {
+  e.preventDefault();
+  ensureAudio();
+  if (!started) return;
+  if (mode === 'spell') spellHint();
+  else handleLetter(String.fromCharCode(65 + Math.floor(Math.random() * 26)));
+}
+renderer.domElement.addEventListener('pointerdown', onTap);
+
+// ---------------------------------------------------------------
+//  Resize
+// ---------------------------------------------------------------
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camDist = clamp(1.1 / camera.aspect, 1, 2.2);   // back up on narrow/portrait screens
+  camera.updateProjectionMatrix();
+  sparkMat.uniforms.uScale.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(FOV / 2)));
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------------------------------------------------------------
+//  Main loop
+// ---------------------------------------------------------------
+// One simulation + render step (dt in seconds, already clamped)
+function step(dt) {
+  now += dt;
+
+  runTimers();
+  updateTweens(dt);
+
+  for (const b of blocks) updateRowBlock(b, dt);
+  for (let i = tumbling.length - 1; i >= 0; i--) {
+    if (!updateTumble(tumbling[i], dt)) { disposeBlock(tumbling[i]); tumbling.splice(i, 1); }
+  }
+  for (const toy of toys) updateToy(toy, dt);
+  updateBalloons(dt);
+  updateSprites(dt);
+  updateRockets(dt);
+  updateSparks(dt);
+  updateConfetti(dt);
+  updateSpell(dt);
+
+  // Idle life: teddy nods, camera sways very gently
+  if (teddyHead) teddyHead.rotation.z = Math.sin(now * 0.9) * 0.12;
+  camera.position.set(
+    CAM_TARGET.x + CAM_OFFSET.x * camDist + Math.sin(now * 0.21) * 0.5,
+    CAM_TARGET.y + CAM_OFFSET.y * camDist + Math.sin(now * 0.17) * 0.25,
+    CAM_TARGET.z + CAM_OFFSET.z * camDist);
+  camera.lookAt(CAM_TARGET);
+
+  renderer.render(scene, camera);
+}
+let lastT = performance.now();
+renderer.setAnimationLoop(() => {
+  const t = performance.now();
+  step(Math.min(0.05, (t - lastT) / 1000));   // clamp: no huge jumps after a tab switch
+  lastT = t;
+});
+
+// Small debug/test hook (harmless for kids), e.g. window.__mlb.handleLetter('A'); window.__mlb.step(0.05)
+window.__mlb = { step, startMode, backToTitle, spellKey, spell: () => ({ mode, started, level: spell.level, stars: spell.stars, done: spell.done, word: spell.word, idx: spell.idx, busy: spell.busy, ghosts: spell.ghosts.length }), handleLetter, handleNumber, hopAll, clearAll, spawnToy, state: () => ({ blocks: blocks.length, tumbling: tumbling.length, balloons: balloons.length, toys: toys.length, sprites: sprites.length, textures: renderer.info.memory.textures, geometries: renderer.info.memory.geometries }) };
+</script>
+</body>
+</html>

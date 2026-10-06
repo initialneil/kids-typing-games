@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Count &amp; Blast Off!</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0b0b2a; overflow: hidden; }
+canvas { display: block; margin: 0 auto; touch-action: none; }
+#back-btn {
+  position: absolute;
+  top: 12px; left: 12px;
+  background: rgba(255,255,255,0.9);
+  border: 3px solid #e91e63;
+  border-radius: 12px;
+  padding: 8px 18px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #e91e63;
+  cursor: pointer;
+  text-decoration: none;
+  z-index: 10;
+  font-family: 'Segoe UI', sans-serif;
+}
+#back-btn:hover { background: #fce4ec; }
+</style>
+</head>
+<body>
+<a id="back-btn" href="index.html">← Home</a>
+<canvas id="c"></canvas>
+<script>
+// ================================================================
+//  Count & Blast Off! — Kids Counting Game (number row + early math)
+//  Count the things, press the number, fuel the rocket. No fail, no timer.
+// ================================================================
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+function W()  { return canvas.width; }
+function H()  { return canvas.height; }
+function GY() { return H() * 0.70; }            // ground (horizon) Y
+// UI scale: ~0.75 at 900×600, ~1.9 at 2560×1440
+function S()  { return Math.max(0.65, Math.min(2.2, Math.min(W() / 1200, H() / 750))); }
+
+const FONT = "'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive";
+function font(px, bold = true) { return `${bold ? 'bold ' : ''}${Math.round(px)}px ${FONT}`; }
+
+// ─── Constants ──────────────────────────────────────────────────
+const ROUNDS_PER_PLANET = 5;
+const NUMBER_WORDS = ['zero','one','two','three','four','five','six','seven','eight','nine'];
+const KEY_ORDER    = ['1','2','3','4','5','6','7','8','9','0'];   // real keyboard order
+const KINDS        = ['star','moon','alien','planet','comet'];
+const KIND_NAMES   = { star:'stars', moon:'moons', alien:'aliens', planet:'planets', comet:'comets' };
+const KIND_COLORS  = { star:'#ffd54f', moon:'#fff3c4', alien:'#7ee06f', planet:'#ff8a65', comet:'#81d4fa' };
+const GROUP_COLORS = ['#ffd54f', '#4fc3f7'];   // addition rounds: yellow group + blue group
+const SEG_COLORS   = ['#ff5252','#ff9100','#ffd600','#76ff03','#00e676'];  // fuel gauge, bottom→top
+const CONFETTI     = ['#ff4081','#ffd740','#40c4ff','#69f0ae','#ea80fc','#ffab40'];
+
+// Each planet gets its own colour scheme (cycles after the last one)
+const SCHEMES = [
+  { name:'Planet Pop',    sky:['#0b0b2a','#2a1b5e','#6a3d9a'], ground:['#b39ddb','#7e57c2','#4527a0'], crater:'rgba(40,20,90,0.35)',  horizon:['#ff8a80','#e53935'], ring:'#ffd180' },
+  { name:'Planet Zing',   sky:['#04121f','#0d3b4f','#1b7f79'], ground:['#a5d6a7','#43a047','#1b5e20'], crater:'rgba(10,50,20,0.35)',  horizon:['#ffe082','#ffb300'], ring:'#80deea' },
+  { name:'Planet Wobble', sky:['#1a0614','#4a0e3b','#a3286b'], ground:['#f8bbd0','#ec407a','#880e4f'], crater:'rgba(90,10,50,0.35)',  horizon:['#80d8ff','#2979ff'], ring:'#ea80fc' },
+  { name:'Planet Sunny',  sky:['#120a00','#3e2100','#8d4b00'], ground:['#ffe0b2','#fb8c00','#e65100'], crater:'rgba(100,40,0,0.35)',  horizon:['#b9f6ca','#00c853'], ring:'#fff59d' },
+  { name:'Planet Splash', sky:['#000d1a','#00264d','#0059b3'], ground:['#b2ebf2','#00acc1','#006064'], crater:'rgba(0,50,60,0.35)',   horizon:['#ffab91','#ff7043'], ring:'#b388ff' },
+];
+
+// Tidy, dice-like layouts (in cell units), listed in reading order = counting order
+const PATTERNS = {
+  1: [[0,0]],
+  2: [[-0.5,0],[0.5,0]],
+  3: [[-1,0],[0,0],[1,0]],
+  4: [[-0.5,-0.55],[0.5,-0.55],[-0.5,0.55],[0.5,0.55]],
+  5: [[-0.9,-0.9],[0.9,-0.9],[0,0],[-0.9,0.9],[0.9,0.9]],
+  6: [[-1,-0.55],[0,-0.55],[1,-0.55],[-1,0.55],[0,0.55],[1,0.55]],
+  7: [[-1.5,-0.55],[-0.5,-0.55],[0.5,-0.55],[1.5,-0.55],[-1,0.55],[0,0.55],[1,0.55]],
+  8: [[-1.5,-0.55],[-0.5,-0.55],[0.5,-0.55],[1.5,-0.55],[-1.5,0.55],[-0.5,0.55],[0.5,0.55],[1.5,0.55]],
+  9: [[-1,-1.05],[0,-1.05],[1,-1.05],[-1,0],[0,0],[1,0],[-1,1.05],[0,1.05],[1,1.05]],
+};
+
+// Fixed crater spots on the ground (normalized x, y-within-ground, size)
+const CRATERS = [[0.04,0.25,0.035],[0.27,0.12,0.02],[0.45,0.32,0.03],[0.58,0.1,0.018],[0.8,0.22,0.03],[0.95,0.12,0.022]];
+
+// ─── State ──────────────────────────────────────────────────────
+// States: title | intro | takeaway | ask | helping | hint | fueling | countdown | launch | tunnel | landing | landed
+let state      = 'title';
+let time       = 0;
+let planetIdx  = 0;        // level index: 0 → count 1–5, 1 → count 1–9, 2 → add, 3 → take away, 4+ → mix
+let ufo        = null;     // take-away UFO { x, y, target } (target: 'hover' | 'exit' | item)
+let titleHover = -1;       // hovered level card on the title screen
+let fuel       = 0;        // fuel segments filled (0..5)
+let fuelShown  = 0;        // smoothed value for drawing
+let round      = null;     // { kind, groups:[n,...], total, items:[], solved, solvedT, fueled }
+let arrived    = 0;        // items that reached the gauge this round
+let hintDigit  = -1;       // digit whose keycap glows after a "count together"
+let lastTotal  = 0, lastKind = '';
+let lastNudge  = -99;
+let rumble     = 0;        // seconds of rocket rumble left
+let shake      = 0;        // screen shake strength (px)
+let flash      = 0;        // white flash overlay alpha
+let rocketLift = 0;        // px the rocket is above its pad
+let phaseT     = 0;        // time inside launch / tunnel / landing
+let cdIndex    = 0;        // countdown progress 0..5
+let cdText     = '';       // big countdown text
+let cdPop      = 0;        // pop animation for countdown text
+let bubble     = { text: '', t: 0 };   // pilot speech bubble
+let particles  = [];
+let popups     = [];
+let stars      = [];
+let warp       = [];
+let keys       = KEY_ORDER.map(d => ({ d, press: 0, good: 0, wiggle: 0 }));
+let hoverKey   = -1;
+let L          = null;     // layout, recomputed every frame (resize-safe)
+
+// ─── Helpers ────────────────────────────────────────────────────
+function rand(a, b)   { return a + Math.random() * (b - a); }
+function randInt(a, b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t; }
+function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3*Math.pow(t-1,3) + c1*Math.pow(t-1,2); }
+function scheme()     { return SCHEMES[planetIdx % SCHEMES.length]; }
+
+// ─── Levels (one per planet) ────────────────────────────────────
+const LEVEL_DESCS  = ['Count to 5', 'Count to 9', 'Add +', 'Take away −'];
+const START_LEVELS = 4;                         // levels you can pick on the title screen
+function levelDesc(i) { return LEVEL_DESCS[i] || 'Add + & take away −'; }
+// What kind of round this level plays (level 5+ mixes adding and taking away)
+function roundMode() {
+  if (planetIdx >= 4) return Math.random() < 0.5 ? 'add' : 'sub';
+  return ['count5', 'count9', 'add', 'sub'][planetIdx];
+}
+
+// Remember the last level started (storage may be blocked — never let it throw)
+const STORAGE_KEY = 'countBlastOff.level';
+function loadLevel() {
+  try {
+    const v = parseInt(window.localStorage.getItem(STORAGE_KEY), 10);
+    return (v >= 0 && v < START_LEVELS) ? v : 0;
+  } catch (e) { return 0; }
+}
+function saveLevel(i) { try { window.localStorage.setItem(STORAGE_KEY, String(i)); } catch (e) {} }
+let savedLevel = loadLevel();
+planetIdx = savedLevel;                          // title screen shows the remembered planet
+
+// A random int in [a,b] that is different from `not` (when possible)
+function randDiff(a, b, not) {
+  let n = randInt(a, b);
+  for (let tries = 0; n === not && tries < 10; tries++) n = randInt(a, b);
+  return n;
+}
+
+// ─── Game-time timers (pause-safe, cleared on state change) ─────
+let timers = [];
+let timerGen = 0;
+function after(sec, fn) { timers.push({ t: sec, fn, gen: timerGen }); }
+function clearTimers()  { timers = []; timerGen++; }
+function updateTimers(dt) {
+  if (!timers.length) return;
+  const due = [];
+  for (const tm of timers) { tm.t -= dt; if (tm.t <= 0) due.push(tm); }
+  if (!due.length) return;
+  timers = timers.filter(tm => tm.t > 0);
+  due.sort((a, b) => a.t - b.t);
+  for (const tm of due) if (tm.gen === timerGen) tm.fn();   // skip if a callback cleared timers
+}
+
+// ─── Audio (synthesized, no files) ──────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx = null;
+let noiseBuf = null;
+function ensureAudio() {
+  if (!AudioCtx) return false;
+  if (!audioCtx) { try { audioCtx = new AudioCtx(); } catch (e) { return false; } }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return true;
+}
+
+function tone(freq, dur, opts = {}) {
+  if (!audioCtx) return;
+  const { type = 'triangle', vol = 0.22, delay = 0, slide = 0 } = opts;
+  const now  = audioCtx.currentTime + delay;
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, now);
+  if (slide) osc.frequency.exponentialRampToValueAtTime(slide, now + dur);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(vol, now + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  osc.start(now);
+  osc.stop(now + dur + 0.05);
+}
+
+// Filtered white noise — rumbles and whooshes
+function noise(dur, opts = {}) {
+  if (!audioCtx) return;
+  const { vol = 0.3, freq = 400, freqTo = 0, type = 'lowpass', delay = 0 } = opts;
+  if (!noiseBuf) {
+    noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const now  = audioCtx.currentTime + delay;
+  const src  = audioCtx.createBufferSource();
+  const filt = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  src.buffer = noiseBuf; src.loop = true;
+  filt.type = type;
+  filt.frequency.setValueAtTime(freq, now);
+  if (freqTo) filt.frequency.exponentialRampToValueAtTime(freqTo, now + dur);
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(vol, now + 0.08);
+  gain.gain.setValueAtTime(vol, now + dur * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  src.connect(filt); filt.connect(gain); gain.connect(audioCtx.destination);
+  src.start(now);
+  src.stop(now + dur + 0.05);
+}
+
+const SCALE = [523, 587, 659, 698, 784, 880, 988, 1047, 1175, 1319];  // C major, rising
+function sfxKey()          { tone(170, 0.07, { vol: 0.12 }); tone(1200, 0.03, { type: 'square', vol: 0.03 }); }
+function sfxPop(i)         { tone(380 + i*40, 0.1, { type: 'sine', vol: 0.1, slide: 760 + i*60 }); }
+function sfxCount(i, soft) { tone(SCALE[Math.min(i, SCALE.length - 1)], 0.32, { type: soft ? 'sine' : 'triangle', vol: soft ? 0.16 : 0.22 }); }
+function sfxYay()          { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.25, { delay: i * 0.08 })); }
+function sfxSparkle()      { tone(1568, 0.12, { type: 'sine', vol: 0.07 }); tone(2093, 0.12, { type: 'sine', vol: 0.05, delay: 0.05 }); }
+function sfxRumble(dur)    { noise(dur, { vol: 0.22, freq: 160 }); }
+function sfxBeep(hi)       { tone(hi ? 988 : 660, 0.22, { type: 'square', vol: 0.07 }); }
+function sfxWhoosh() {
+  noise(2.6, { vol: 0.35, freq: 200, freqTo: 2500, type: 'bandpass' });
+  noise(2.2, { vol: 0.3, freq: 120 });
+  tone(110, 1.8, { type: 'sawtooth', vol: 0.06, slide: 40 });
+}
+function sfxUfo()  { tone(600, 0.5, { type: 'sine', vol: 0.1, slide: 950 }); tone(950, 0.5, { type: 'sine', vol: 0.1, delay: 0.3, slide: 600 }); }
+function sfxBeam() { tone(300, 0.45, { type: 'sine', vol: 0.12, slide: 1300 }); }
+function sfxFanfare() {
+  [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, 0.22, { delay: i * 0.12 }));
+  [523, 659, 784].forEach(f => tone(f, 0.9, { delay: 0.75, vol: 0.12 }));
+}
+
+// ─── Speech (guarded — silently skipped if unavailable) ─────────
+const synth = ('speechSynthesis' in window) ? window.speechSynthesis : null;
+let voice = null;
+function pickVoice() {
+  if (!synth) return;
+  const vs = synth.getVoices() || [];
+  voice = vs.find(v => /en[-_]US/i.test(v.lang) && /Samantha|Google US|Karen|Zira|Female/i.test(v.name))
+       || vs.find(v => /^en/i.test(v.lang)) || null;
+}
+if (synth) { pickVoice(); try { synth.onvoiceschanged = pickVoice; } catch (e) {} }
+
+function say(text, opts = {}) {
+  if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
+  try {
+    if (opts.interrupt) synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang  = 'en-US';
+    if (voice) u.voice = voice;
+    u.pitch = opts.pitch || 1.2;
+    u.rate  = opts.rate  || 1.0;
+    synth.speak(u);
+  } catch (e) { /* speech is a bonus, never an error */ }
+}
+
+function setBubble(text, dur) { bubble.text = text; bubble.t = dur; }
+
+// ─── Layout (everything scales from window size) ────────────────
+function layout() {
+  const w = W(), h = H(), gy = GY();
+  const rocketH = Math.min(h * 0.36, w * 0.24);
+  const padH    = h * 0.03;
+  const padX    = w * 0.135;
+  const base    = gy - padH;                 // rocket nozzle sits here
+  const gw      = rocketH * 0.17;
+  const gh      = rocketH * 0.8;
+  const gauge   = { x: padX + rocketH * 0.42, y: gy - gh - padH * 0.3, w: gw, h: gh, pad: gw * 0.16 };
+  const board   = { x: w * 0.30, y: h * 0.13, w: w * 0.68, h: gy - h * 0.035 - h * 0.13 };
+
+  // Keyboard number row: 10 keycaps in keyboard order
+  const gapRatio = 0.14;
+  const kw    = Math.min((w * 0.92) / (10 + 9 * gapRatio), h * 0.115);
+  const gap   = kw * gapRatio;
+  const kh    = kw * 0.9;
+  const depth = kh * 0.16;
+  const rowW  = kw * 10 + gap * 9;
+  const kx0   = (w - rowW) / 2;
+  const ky    = h - kh - depth - h * 0.035;
+  const keyRects = KEY_ORDER.map((d, i) => ({ x: kx0 + i * (kw + gap), y: ky, w: kw, h: kh }));
+
+  return { rocketH, padH, padX, base, gauge, board, keyRects, kb: { x: kx0, y: ky, w: rowW, h: kh, depth, gap } };
+}
+
+// Geometry of the current round on the board: columns for group(s), signs and the answer box
+function roundGeom() {
+  const b = L.board;
+  // count:  [group] = [?]      add: [A] + [B] = [?]      sub: [group] − [K] = [?]
+  const LAYOUTS = {
+    count: { w: [0.04, 0.60, 0.12, 0.20, 0.04],             k: ['m','g','eq','ans','m'] },
+    add:   { w: [0.02, 0.31, 0.10, 0.31, 0.09, 0.15, 0.02], k: ['m','g','plus','g','eq','ans','m'] },
+    sub:   { w: [0.03, 0.50, 0.10, 0.13, 0.09, 0.13, 0.02], k: ['m','g','minus','k','eq','ans','m'] },
+  };
+  const weights = LAYOUTS[round.op].w, kinds = LAYOUTS[round.op].k;
+  const cols = [];
+  let x = b.x;
+  weights.forEach((wt, i) => { cols.push({ kind: kinds[i], cx: x + b.w * wt / 2, w: b.w * wt }); x += b.w * wt; });
+  const top = b.y + b.h * 0.18, bottom = b.y + b.h * 0.80;
+  const groupCols = cols.filter(c => c.kind === 'g');
+  const gh = bottom - top, cy = (top + bottom) / 2;
+  // Size cells from the widest/tallest pattern so small counts get big, friendly items
+  let ew = 0, eh = 0;
+  for (const n of round.groups) {
+    const xs = PATTERNS[n].map(p => p[0]), ys = PATTERNS[n].map(p => p[1]);
+    ew = Math.max(ew, Math.max(...xs) - Math.min(...xs));
+    eh = Math.max(eh, Math.max(...ys) - Math.min(...ys));
+  }
+  const cell = Math.min(groupCols[0].w / (ew + 1.2), gh / (eh + 1.2), gh * 0.42);
+  // Written numeral sits just under the items
+  const numY = Math.min(cy + (eh / 2 + 0.38) * cell + 34 * S(), b.y + b.h * 0.92);
+  return { cols, groupCols, cy, gh, cell, numY, promptY: b.y + b.h * 0.09 };
+}
+
+function itemPos(it, G) {
+  const col = G.groupCols[it.g];
+  const [px, py] = PATTERNS[round.groups[it.g]][it.k];
+  const bob = Math.sin(time * 2.2 + it.ph) * G.cell * 0.06;     // gentle bobbing
+  return { x: col.cx + px * G.cell, y: G.cy + py * G.cell + bob };
+}
+
+function itemColor(it) { return round.groups.length > 1 ? GROUP_COLORS[it.g] : KIND_COLORS[round.kind]; }
+
+// Centre of fuel-gauge segment i (0 = bottom)
+function gaugeSeg(i) {
+  const g = L.gauge;
+  const segH = (g.h - g.pad * 2) / ROUNDS_PER_PLANET;
+  return { x: g.x + g.w / 2, y: g.y + g.h - g.pad - segH * (i + 0.5) };
+}
+
+// Flying item: arcs from its spot into the next fuel segment
+function flyPos(it, G) {
+  const a = itemPos(it, G), b = gaugeSeg(Math.min(fuel, ROUNDS_PER_PLANET - 1));
+  const t = easeInOut(it.fly);
+  const c = { x: (a.x + b.x) / 2, y: Math.min(a.y, b.y) - H() * 0.18 };
+  return {
+    x: (1-t)*(1-t)*a.x + 2*(1-t)*t*c.x + t*t*b.x,
+    y: (1-t)*(1-t)*a.y + 2*(1-t)*t*c.y + t*t*b.y,
+  };
+}
+
+// ─── Stars (parallax layers, normalized coords) ─────────────────
+function initStars() {
+  stars = [];
+  const layers = [ { n: 70, r: [0.6, 1.3], spd: 0.004 }, { n: 40, r: [1.2, 2.0], spd: 0.009 }, { n: 16, r: [2.0, 3.2], spd: 0.018 } ];
+  layers.forEach((ly, li) => {
+    for (let i = 0; i < ly.n; i++) {
+      stars.push({ x: Math.random(), y: Math.random(), r: rand(ly.r[0], ly.r[1]), spd: ly.spd, layer: li, ph: Math.random() * 6.28, tw: rand(1.5, 4.5) });
+    }
+  });
+}
+
+// Warp-speed "star tunnel" used between planets
+function initWarp() {
+  warp = [];
+  for (let i = 0; i < 200; i++) warp.push(newWarpStar(Math.random()));
+}
+function newWarpStar(z) {
+  let x, y;
+  do { x = rand(-1, 1); y = rand(-1, 1); } while (Math.abs(x) + Math.abs(y) < 0.12);
+  return { x, y, z: Math.max(0.05, z), hue: rand(0, 360) };
+}
+
+// ─── Particles & popups ─────────────────────────────────────────
+function addParticle(p) { if (particles.length < 700) particles.push(p); }
+
+function spawnConfetti(n) {
+  for (let i = 0; i < n; i++) {
+    addParticle({ type: 'confetti', x: Math.random() * W(), y: -20 - Math.random() * H() * 0.3,
+      vx: rand(-60, 60), vy: rand(80, 240), g: 60, rot: Math.random() * 6, vr: rand(-5, 5),
+      w: rand(6, 14) * S(), h: rand(4, 9) * S(), col: pick(CONFETTI), life: 1, max: 4 });
+  }
+}
+function spawnBurst(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(Math.PI * 1.05, Math.PI * 1.95), sp = rand(200, 520) * S();
+    addParticle({ type: 'confetti', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, g: 380 * S(),
+      rot: Math.random() * 6, vr: rand(-8, 8), w: rand(6, 14) * S(), h: rand(4, 9) * S(), col: pick(CONFETTI), life: 1, max: 2.6 });
+  }
+}
+function spawnSparkles(x, y, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = rand(60, 200) * S();
+    addParticle({ type: 'spark', x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, g: 60, r: rand(3, 7) * S(), col: pick(CONFETTI), life: 1, max: 0.8 });
+  }
+}
+function spawnSmoke(x, y, vx, vy, r) {
+  addParticle({ type: 'smoke', x, y, vx, vy, g: -10, r, grow: 30 * S(), life: 1, max: 1.6 });
+}
+
+function addPopup(text, x, y, size, color) { popups.push({ text, x, y, size, color: color || '#fff', life: 1, max: 1.6 }); }
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt;
+    if (p.type === 'smoke') { p.r += p.grow * dt; p.vx *= 0.98; }
+    if (p.rot !== undefined) p.rot += p.vr * dt;
+    p.life -= dt / p.max;
+    if (p.life <= 0 || p.y > H() + 60) particles.splice(i, 1);
+  }
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.y -= 40 * S() * dt; p.life -= dt / p.max;
+    if (p.life <= 0) popups.splice(i, 1);
+  }
+}
+
+// ─── Game flow ──────────────────────────────────────────────────
+// Start a run at a chosen level (0-based) from the title screen
+function startGame(level) {
+  ensureAudio();
+  clearTimers();
+  planetIdx = level; fuel = 0; fuelShown = 0; round = null; ufo = null;
+  savedLevel = level; saveLevel(level);
+  state = 'intro';
+  say(`Level ${level + 1}! Let's count and blast off!`, { interrupt: true });
+  setBubble("Hi! Let's count!", 2.2);
+  sfxYay();
+  after(1.8, newRound);
+}
+
+// Escape → back to the title / level select, dropping the current run
+function goTitle() {
+  clearTimers();
+  if (synth) { try { synth.cancel(); } catch (e) {} }
+  state = 'title';
+  planetIdx = savedLevel;
+  round = null; ufo = null; fuel = 0; fuelShown = 0;
+  rocketLift = 0; rumble = 0; shake = 0; cdText = ''; cdIndex = 0;
+  hintDigit = -1; bubble.t = 0; particles = []; popups = [];
+}
+
+function newRound() {
+  clearTimers();
+  const kind = pick(KINDS.filter(k => k !== lastKind));
+  const mode = roundMode();
+  let groups, take = 0, total;
+  if (mode === 'count5')      groups = [randDiff(1, 5, lastTotal)];
+  else if (mode === 'count9') groups = [randDiff(1, 9, lastTotal)];
+  else if (mode === 'add') {
+    // Addition: two groups, sum ≤ 9 (counting everything still works)
+    const sum = randDiff(2, 9, lastTotal);
+    const a = randInt(1, sum - 1);
+    groups = [a, sum - a];
+  } else {
+    // Take away: N items, the UFO scoops K of them (sometimes all → answer 0)
+    const n = randInt(2, 9);
+    take = Math.random() < 0.12 ? n : randInt(1, n - 1);
+    groups = [n];
+  }
+  total = groups.reduce((a, b) => a + b, 0) - take;
+  const op = mode === 'sub' ? 'sub' : groups.length > 1 ? 'add' : 'count';
+  round = { kind, groups, total, op, take, items: [], solved: false, solvedT: 0, fueled: false,
+            takeDone: op !== 'sub', takeDoneT: 0 };
+  let i = 0;
+  groups.forEach((n, g) => {
+    for (let k = 0; k < n; k++, i++) {
+      round.items.push({ g, k, ph: Math.random() * 6.28, appear: 0, delay: 0.15 + i * 0.13,
+                         label: 0, lit: 0, flying: false, fly: 0, gone: false,
+                         willTake: op === 'sub' && k >= n - take, takeT: 0, taken: false });
+    }
+  });
+  round.items.forEach((it, j) => after(it.delay, () => sfxPop(j)));
+  const popDone = 0.35 + round.items.length * 0.13;
+  arrived = 0; hintDigit = -1;
+  lastKind = kind; lastTotal = total;
+
+  if (op !== 'sub') {
+    after(popDone, () => say(op === 'add' ? `How many ${KIND_NAMES[kind]} in all?` : `How many ${KIND_NAMES[kind]}?`));
+    state = 'ask';
+    return;
+  }
+
+  // Take-away show: a little UFO beams up the last K items one at a time
+  state = 'takeaway';
+  const t0 = popDone + 0.5;
+  after(t0, () => {
+    const b = L.board;
+    ufo = { x: b.x + b.w + 80, y: b.y - 60, target: 'hover' };
+    sfxUfo();
+    setBubble('Oh! A UFO!', 1.8);
+    say('Oh! A UFO!');
+  });
+  const takers = round.items.filter(it => it.willTake);
+  takers.forEach((it, j) => {
+    after(t0 + 0.9 + j * 1.0,  () => { ufo.target = it; });
+    after(t0 + 1.35 + j * 1.0, () => { it.takeT = 0.001; sfxBeam(); });
+  });
+  after(t0 + 0.9 + take * 1.0 + 0.4, () => {
+    ufo.target = 'exit';
+    round.takeDone = true; round.takeDoneT = 0;
+    setBubble('Bye bye, UFO!', 1.6);
+    say(`${NUMBER_WORDS[groups[0]]} take away ${NUMBER_WORDS[take]}. How many ${KIND_NAMES[kind]} are left?`);
+    state = 'ask';
+  });
+}
+
+// Items that get counted (take-away rounds skip the ones the UFO took)
+function countables() { return round.items.filter(it => !it.willTake); }
+
+// A number was pressed (keyboard, numpad, or tapped keycap)
+function handleDigit(d) {
+  const key = keys.find(k => k.d === String(d));
+  key.press = 1;
+  sfxKey();
+  if (state !== 'ask' && state !== 'hint') return;
+
+  if (d === round.total) {
+    key.good = 1;
+    startFueling();
+  } else if (state === 'ask') {
+    startHelping();                      // no penalty — just count together
+  } else {
+    // Already hinting: gently point at the glowing key again
+    key.wiggle = 1;
+    if (time - lastNudge > 2) {
+      lastNudge = time;
+      say(`Find ${NUMBER_WORDS[round.total]}!`);
+      setBubble(`Find ${round.total}!`, 99);
+    }
+  }
+}
+
+// Wrong answer → "Let's count together!" then the right keycap glows
+function startHelping() {
+  clearTimers();
+  state = 'helping';
+  setBubble("Let's count together!", 99);
+  say("Let's count together!", { interrupt: true });
+  round.items.forEach(it => { it.label = 0; it.lit = 0; });
+  const start = 1.7, step = 0.85;
+  countables().forEach((it, i) => after(start + i * step, () => {
+    it.label = i + 1; it.lit = 1;
+    sfxCount(i, true);
+    say(NUMBER_WORDS[i + 1]);
+  }));
+  after(start + round.total * step + 0.3, () => {
+    hintDigit = round.total % 10;
+    state = 'hint';
+    const w = NUMBER_WORDS[round.total];
+    say(round.total === 0 ? 'None left! Zero! Press zero!' : `${w}! Press ${w}!`);
+    setBubble(`${round.total}! Press ${round.total}!`, 99);
+  });
+}
+
+// Right answer → items fly into the fuel gauge, counted aloud
+function startFueling() {
+  clearTimers();
+  state = 'fueling';
+  hintDigit = -1;
+  round.solved = true; round.solvedT = 0;
+  round.items.forEach(it => { it.label = 0; it.lit = 0; });
+  sfxYay();
+  setBubble('Yes! Fuel up!', 1.6);
+  say('Yes!', { interrupt: true });
+  const G = roundGeom();
+  const ans = G.cols.find(c => c.kind === 'ans');
+  spawnSparkles(ans.cx, G.cy, 18);
+
+  const start = 0.9, step = 0.7;
+  countables().forEach((it, i) => after(start + i * step, () => {
+    it.label = i + 1; it.lit = 1; it.flying = true; it.fly = 0;
+    sfxCount(i);
+    say(NUMBER_WORDS[i + 1]);
+  }));
+  const end = start + round.total * step + 0.5;
+  after(end, () => {
+    say(NUMBER_WORDS[round.total] + '!', { pitch: 1.45, rate: 0.9 });
+    const b = L.board;
+    addPopup(NUMBER_WORDS[round.total].toUpperCase() + '!', b.x + b.w / 2, b.y + b.h * 0.5, 64, '#fff59d');
+    fuel = Math.min(ROUNDS_PER_PLANET, fuel + 1);
+    round.fueled = true;
+    rumble = 1.3;
+    sfxRumble(1.3);
+    sfxSparkle();
+  });
+  after(end + 2.0, () => { if (fuel >= ROUNDS_PER_PLANET) startCountdown(); else newRound(); });
+}
+
+function startCountdown() {
+  clearTimers();
+  state = 'countdown';
+  round = null; cdIndex = 0; cdText = '';
+  setBubble('Fuel is full! Ready?', 1.8);
+  say('Fuel is full! Get ready!', { interrupt: true });
+  sfxYay();
+  for (let i = 0; i < 5; i++) {
+    after(1.9 + i, () => {
+      cdIndex = i + 1; cdText = String(5 - i); cdPop = 1;
+      sfxBeep(false); sfxRumble(1.0);
+      say(NUMBER_WORDS[5 - i], { rate: 1.1 });
+      rumble = Math.max(rumble, 1.1);
+    });
+  }
+  after(6.9, () => {
+    cdText = 'BLAST OFF!'; cdPop = 1;
+    sfxBeep(true); sfxWhoosh();
+    say('Blast off!', { pitch: 1.45, rate: 1.1 });
+    setBubble('Wheee!', 2);
+    state = 'launch'; phaseT = 0;
+  });
+}
+
+// Tunnel finished → arrive at a new planet (new colours, next difficulty)
+function arriveNewPlanet() {
+  planetIdx++;
+  fuel = 0; fuelShown = 0;
+  state = 'landing'; phaseT = 0; flash = 1;
+  rocketLift = H() * 1.1;
+  cdText = ''; cdIndex = 0;
+}
+
+function touchdown() {
+  state = 'landed';
+  rocketLift = 0;
+  shake = 8 * S();
+  for (let i = 0; i < 10; i++) spawnSmoke(L.padX + rand(-1, 1) * L.rocketH * 0.3, L.base, rand(-120, 120) * S(), rand(-40, -10), rand(10, 22) * S());
+  spawnConfetti(120);
+  spawnBurst(L.padX, L.base - L.rocketH * 0.5, 60);
+  sfxFanfare();
+  setBubble('We made it!', 3);
+  say(`Hooray! Welcome to ${scheme().name}!`, { interrupt: true });
+}
+
+function flyAgain() {
+  setBubble("Let's fuel up!", 1.8);
+  say("Let's fuel up!", { interrupt: true });
+  newRound();
+}
+
+// ─── Update ─────────────────────────────────────────────────────
+function update(dt) {
+  time += dt;
+  updateTimers(dt);
+
+  // Stars drift (parallax); stream downward while the rocket climbs
+  const starVy = state === 'launch' ? 0.45 * phaseT : 0;
+  for (const st of stars) {
+    st.x -= st.spd * dt;
+    if (st.x < 0) st.x += 1;
+    st.y += starVy * dt * (st.layer + 1) * 0.5;
+    if (st.y > 1) st.y -= 1;
+  }
+
+  // Keycaps spring back up
+  for (const k of keys) {
+    k.press  = Math.max(0, k.press - dt * 5);
+    k.good   = Math.max(0, k.good - dt * 0.8);
+    k.wiggle = Math.max(0, k.wiggle - dt * 2.5);
+  }
+
+  // Round items: pop in, fly to the gauge
+  if (round) {
+    round.solvedT += dt;
+    for (const it of round.items) {
+      if (it.delay > 0) it.delay -= dt;
+      else it.appear = Math.min(1, it.appear + dt * 4);
+      if (it.flying) {
+        it.fly += dt / 0.65;
+        if (it.fly >= 1) {
+          it.flying = false; it.gone = true; arrived++;
+          const p = gaugeSeg(Math.min(fuel, ROUNDS_PER_PLANET - 1));
+          spawnSparkles(p.x, p.y, 8);
+        }
+      }
+      // Being beamed up into the UFO
+      if (it.takeT > 0 && !it.taken) {
+        it.takeT += dt / 0.5;
+        if (it.takeT >= 1) it.taken = true;
+      }
+    }
+    if (round.takeDone) round.takeDoneT += dt;
+  }
+
+  // Take-away UFO glides toward its target (hover spot, above an item, or off-screen)
+  if (ufo && round) {
+    const G = roundGeom(), b = L.board;
+    let tx, ty;
+    if (ufo.target === 'exit')       { tx = W() + 200; ty = -200; }
+    else if (ufo.target === 'hover') { tx = b.x + b.w * 0.8; ty = b.y + b.h * 0.12; }
+    else { const p = itemPos(ufo.target, G); tx = p.x; ty = p.y - G.cell * 1.3; }
+    const k = Math.min(1, dt * (ufo.target === 'exit' ? 2.5 : 6));
+    ufo.x += (tx - ufo.x) * k;
+    ufo.y += (ty - ufo.y) * k;
+    if (ufo.target === 'exit' && (ufo.x > W() + 60 || ufo.y < -60)) ufo = null;
+  }
+
+  // Fuel gauge eases toward its target (partial segment while items arrive)
+  const partial = (state === 'fueling' && round && !round.fueled && round.total > 0) ? arrived / round.total : 0;
+  fuelShown += (fuel + partial - fuelShown) * Math.min(1, dt * 6);
+
+  updateParticles(dt);
+  if (bubble.t > 0 && bubble.t < 90) bubble.t -= dt;
+  rumble = Math.max(0, rumble - dt);
+  shake  = Math.max(0, shake - dt * 14 * S());
+  flash  = Math.max(0, flash - dt * 1.6);
+  cdPop  = Math.max(0, cdPop - dt * 2.5);
+
+  // Smoke puffs at the pad while rumbling
+  if ((rumble > 0 || state === 'countdown') && Math.random() < dt * 14) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    spawnSmoke(L.padX + side * L.rocketH * 0.12, L.base, side * rand(40, 120) * S(), rand(-30, -5), rand(6, 12) * S());
+  }
+
+  if (state === 'countdown') {
+    shake = Math.max(shake, cdIndex * 0.9 * S());
+
+  } else if (state === 'launch') {
+    phaseT += dt;
+    rocketLift = 0.5 * H() * 0.9 * phaseT * phaseT + H() * 0.03 * phaseT;
+    shake = Math.max(shake, 10 * S() * Math.max(0, 1 - phaseT / 2));
+    if (phaseT < 1.2 && Math.random() < dt * 40) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      spawnSmoke(L.padX + side * rand(0, L.rocketH * 0.3), L.base, side * rand(80, 260) * S(), rand(-60, -10), rand(12, 24) * S());
+    }
+    if (phaseT > 1.9) { state = 'tunnel'; phaseT = 0; flash = 1; initWarp(); cdText = ''; }
+
+  } else if (state === 'tunnel') {
+    phaseT += dt;
+    for (let i = 0; i < warp.length; i++) {
+      warp[i].z -= dt * 0.9;
+      if (warp[i].z < 0.04) warp[i] = newWarpStar(1);
+    }
+    if (phaseT > 3.2) arriveNewPlanet();
+
+  } else if (state === 'landing') {
+    phaseT += dt;
+    const t = Math.min(1, phaseT / 2.6);
+    rocketLift = H() * 1.1 * (1 - easeOutCubic(t));
+    if (t > 0.7 && Math.random() < dt * 20) spawnSmoke(L.padX + rand(-1, 1) * L.rocketH * 0.2, L.base, rand(-100, 100) * S(), -10, rand(8, 16) * S());
+    if (t >= 1) touchdown();
+
+  } else if (state === 'landed') {
+    if (Math.random() < dt * 4) spawnConfetti(2);
+  }
+}
+
+// ─── Drawing helpers ─────────────────────────────────────────────
+function roundRectPath(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);   ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r); ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);   ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);     ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+function roundRect(x, y, w, h, r, color) { roundRectPath(x, y, w, h, r); ctx.fillStyle = color; ctx.fill(); }
+function circle(x, y, r, color) { ctx.beginPath(); ctx.arc(x, y, Math.max(0, r), 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+
+// Outlined, vertically-centred text
+function label(str, x, y, px, fill, stroke, align = 'center') {
+  ctx.font = font(px);
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  if (stroke) { ctx.lineJoin = 'round'; ctx.strokeStyle = stroke; ctx.lineWidth = Math.max(3, px * 0.14); ctx.strokeText(str, x, y); }
+  ctx.fillStyle = fill;
+  ctx.fillText(str, x, y);
+  ctx.textBaseline = 'alphabetic';
+}
+// Shrink font size until the text fits a width
+function fitSize(str, px, maxW) {
+  ctx.font = font(px);
+  const w = ctx.measureText(str).width;
+  return w > maxW ? px * maxW / w : px;
+}
+
+// ─── Background: sky, stars, horizon planet, ground ─────────────
+function drawSky() {
+  const sc = scheme(), gy = GY(), s = S();
+  const sky = ctx.createLinearGradient(0, 0, 0, gy);
+  sky.addColorStop(0, sc.sky[0]); sky.addColorStop(0.6, sc.sky[1]); sky.addColorStop(1, sc.sky[2]);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W(), gy + 2);
+
+  // Twinkling parallax stars
+  for (const st of stars) {
+    const a = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(time * st.tw + st.ph));
+    const x = st.x * W(), y = st.y * gy, r = st.r * Math.max(1, s * 0.8);
+    ctx.globalAlpha = a;
+    circle(x, y, r, '#fff');
+    if (st.layer === 2) {           // big stars get a little sparkle cross
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x - r*3, y); ctx.lineTo(x + r*3, y); ctx.moveTo(x, y - r*3); ctx.lineTo(x, y + r*3); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // Tiny far-away moon
+  circle(W() * 0.24, H() * 0.09, 12 * s, 'rgba(255,255,255,0.75)');
+  circle(W() * 0.24 + 5 * s, H() * 0.09 - 3 * s, 10 * s, sc.sky[0]);
+
+  // Big ringed planet rising on the horizon
+  const R = W() * 0.24, px = W() * 0.64, py = gy + R * 0.5;
+  ctx.save();
+  ctx.translate(px, py); ctx.rotate(-0.18);
+  ctx.strokeStyle = sc.ring; ctx.globalAlpha = 0.7; ctx.lineWidth = R * 0.07;
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 1.55, R * 0.3, 0, Math.PI, Math.PI * 2); ctx.stroke();   // back of ring
+  ctx.globalAlpha = 1;
+  const pg = ctx.createRadialGradient(-R * 0.3, -R * 0.4, R * 0.1, 0, 0, R);
+  pg.addColorStop(0, sc.horizon[0]); pg.addColorStop(1, sc.horizon[1]);
+  circle(0, 0, R, pg);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  for (let i = 0; i < 4; i++) ctx.fillRect(-R, -R * 0.85 + i * R * 0.32, R * 2, R * 0.12);   // stripes
+  ctx.restore();
+  ctx.strokeStyle = sc.ring; ctx.globalAlpha = 0.85;
+  ctx.beginPath(); ctx.ellipse(0, 0, R * 1.55, R * 0.3, 0, 0, Math.PI); ctx.stroke();            // front of ring
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawGround() {
+  const sc = scheme(), gy = GY(), w = W(), h = H();
+  const g = ctx.createLinearGradient(0, gy, 0, h);
+  g.addColorStop(0, sc.ground[0]); g.addColorStop(0.3, sc.ground[1]); g.addColorStop(1, sc.ground[2]);
+  ctx.fillStyle = g;
+  // Bumpy horizon line
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, gy);
+  const bumps = 9;
+  for (let i = 0; i < bumps; i++) {
+    const x0 = w * i / bumps, x1 = w * (i + 1) / bumps;
+    ctx.quadraticCurveTo((x0 + x1) / 2, gy - h * (i % 2 ? 0.012 : 0.022), x1, gy);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fill();
+  // Craters
+  for (const [cx, cy, cr] of CRATERS) {
+    ctx.fillStyle = sc.crater;
+    ctx.beginPath(); ctx.ellipse(cx * w, gy + cy * (h - gy), cr * w, cr * w * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ─── Launch pad + fuel gauge ─────────────────────────────────────
+function drawGauge() {
+  const g = L.gauge, s = S();
+  // Support leg down to the ground
+  ctx.fillStyle = '#546e7a';
+  ctx.fillRect(g.x + g.w * 0.35, g.y + g.h - 2, g.w * 0.3, GY() - (g.y + g.h) + 4);
+  // Pipe to the rocket (only while it is on the pad)
+  if (rocketLift < 1) {
+    ctx.strokeStyle = '#78909c'; ctx.lineWidth = g.w * 0.22; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(g.x, g.y + g.h * 0.72); ctx.lineTo(L.padX + L.rocketH * 0.15, g.y + g.h * 0.72); ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+  roundRect(g.x, g.y, g.w, g.h, g.w * 0.3, '#37474f');
+  ctx.strokeStyle = '#b0bec5'; ctx.lineWidth = 2.5 * s;
+  roundRectPath(g.x, g.y, g.w, g.h, g.w * 0.3); ctx.stroke();
+
+  const segH = (g.h - g.pad * 2) / ROUNDS_PER_PLANET, gap = segH * 0.12;
+  for (let i = 0; i < ROUNDS_PER_PLANET; i++) {
+    const sx = g.x + g.pad, sw = g.w - g.pad * 2;
+    const sy = g.y + g.h - g.pad - segH * (i + 1) + gap / 2, sh = segH - gap;
+    roundRect(sx, sy, sw, sh, sw * 0.25, '#1c262b');
+    const f = clamp(fuelShown - i, 0, 1);
+    if (f > 0.01) roundRect(sx, sy + sh * (1 - f), sw, sh * f, sw * 0.25, SEG_COLORS[i]);
+    // The segment being filled this round glows
+    if (i === fuel && (state === 'fueling' || state === 'takeaway' || state === 'ask' || state === 'hint' || state === 'helping')) {
+      ctx.strokeStyle = `rgba(255,255,255,${0.35 + 0.35 * Math.sin(time * 5)})`; ctx.lineWidth = 2 * s;
+      roundRectPath(sx, sy, sw, sh, sw * 0.25); ctx.stroke();
+    }
+  }
+  label('FUEL', g.x + g.w / 2, g.y - 12 * s, 15 * s, '#fff', '#263238');
+}
+
+function drawPad() {
+  const pw = L.rocketH * 0.85, x = L.padX - pw / 2, y = L.base, h = L.padH;
+  roundRect(x, y, pw, h, 5, '#546e7a');
+  // Yellow/black hazard stripes on top edge
+  ctx.save();
+  roundRectPath(x, y, pw, h * 0.4, 4); ctx.clip();
+  ctx.fillStyle = '#ffca28'; ctx.fillRect(x, y, pw, h * 0.4);
+  ctx.fillStyle = '#263238';
+  for (let sx = x - h; sx < x + pw; sx += h * 0.8) {
+    ctx.beginPath(); ctx.moveTo(sx, y + h * 0.4); ctx.lineTo(sx + h * 0.4, y); ctx.lineTo(sx + h * 0.7, y); ctx.lineTo(sx + h * 0.3, y + h * 0.4); ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ─── Rocket (with waving alien pilot) ────────────────────────────
+function drawFlame(u, flame) {
+  const flick = 0.85 + 0.15 * Math.sin(time * 40) + Math.random() * 0.1;
+  const len = (14 + flame * 75) * u * flick;
+  const wid = (8 + flame * 5) * u;
+  if (flame > 0.4) {
+    const glow = ctx.createRadialGradient(0, len * 0.35, 0, 0, len * 0.35, len);
+    glow.addColorStop(0, 'rgba(255,170,0,0.45)'); glow.addColorStop(1, 'rgba(255,120,0,0)');
+    circle(0, len * 0.35, len, glow);
+  }
+  const layer = (w, l, c) => {
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(-w, -2 * u);
+    ctx.quadraticCurveTo(-w * 0.9, l * 0.5, 0, l);
+    ctx.quadraticCurveTo(w * 0.9, l * 0.5, w, -2 * u);
+    ctx.closePath(); ctx.fill();
+  };
+  layer(wid, len, '#ff6d00');
+  layer(wid * 0.7, len * 0.72, '#ffd600');
+  layer(wid * 0.4, len * 0.45, '#fffde7');
+}
+
+function rocketBodyPath(u) {
+  ctx.beginPath();
+  ctx.moveTo(-16*u, -14*u);
+  ctx.lineTo(-16*u, -58*u);
+  ctx.bezierCurveTo(-16*u, -80*u, -7*u, -94*u, 0, -101*u);
+  ctx.bezierCurveTo(7*u, -94*u, 16*u, -80*u, 16*u, -58*u);
+  ctx.lineTo(16*u, -14*u);
+  ctx.quadraticCurveTo(16*u, -10*u, 12*u, -10*u);
+  ctx.lineTo(-12*u, -10*u);
+  ctx.quadraticCurveTo(-16*u, -10*u, -16*u, -14*u);
+  ctx.closePath();
+}
+
+// (x, baseY) = bottom of the nozzle; size = full height; flame 0..1; wave = arm wave speed
+function drawRocket(x, baseY, size, flame, wave) {
+  const u = size / 100;
+  ctx.save();
+  ctx.translate(x, baseY);
+  if (flame > 0.02) drawFlame(u, flame);
+
+  // Nozzle
+  ctx.fillStyle = '#78909c';
+  ctx.beginPath(); ctx.moveTo(-9*u, -11*u); ctx.lineTo(9*u, -11*u); ctx.lineTo(12*u, 0); ctx.lineTo(-12*u, 0); ctx.closePath(); ctx.fill();
+
+  // Side fins
+  ctx.fillStyle = '#e53935';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side*15*u, -42*u);
+    ctx.quadraticCurveTo(side*32*u, -30*u, side*31*u, -4*u);
+    ctx.quadraticCurveTo(side*24*u, -9*u, side*15*u, -14*u);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Body with soft 3D shading
+  const bg = ctx.createLinearGradient(-16*u, 0, 16*u, 0);
+  bg.addColorStop(0, '#eceff1'); bg.addColorStop(0.35, '#ffffff'); bg.addColorStop(1, '#b0bec5');
+  rocketBodyPath(u); ctx.fillStyle = bg; ctx.fill();
+  ctx.save();
+  rocketBodyPath(u); ctx.clip();
+  ctx.fillStyle = '#e53935'; ctx.fillRect(-20*u, -102*u, 40*u, 25*u);     // red nose
+  ctx.fillStyle = '#1e88e5'; ctx.fillRect(-20*u, -29*u, 40*u, 6*u);       // blue stripe
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fillRect(-11*u, -74*u, 3.5*u, 48*u);  // shine
+  ctx.restore();
+  rocketBodyPath(u); ctx.strokeStyle = '#90a4ae'; ctx.lineWidth = 1.5*u; ctx.stroke();
+
+  // Front fin
+  roundRect(-2.5*u, -30*u, 5*u, 26*u, 2*u, '#c62828');
+
+  // Porthole window with the alien pilot
+  const wy = -52*u, wr = 11*u;
+  circle(0, wy, wr + 3*u, '#90a4ae');
+  const glass = ctx.createRadialGradient(-3*u, wy - 3*u, 1, 0, wy, wr);
+  glass.addColorStop(0, '#81d4fa'); glass.addColorStop(1, '#0d47a1');
+  circle(0, wy, wr, glass);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(0, wy, wr, 0, Math.PI * 2); ctx.clip();
+  circle(0, wy + 14*u, 8*u, '#66bb6a');                           // body
+  // Antenna
+  ctx.strokeStyle = '#66bb6a'; ctx.lineWidth = 1.2*u;
+  ctx.beginPath(); ctx.moveTo(0, wy - 2*u); ctx.lineTo(2.5*u, wy - 7*u); ctx.stroke();
+  circle(2.5*u, wy - 7*u, 1.4*u, '#ff80ab');
+  circle(0, wy + 3*u, 7*u, '#7ee06f');                            // head
+  for (const ex of [-2.7, 2.7]) {
+    circle(ex*u, wy + 2*u, 2.3*u, '#fff');
+    circle(ex*u + Math.sin(time * 1.3) * 0.5*u, wy + 2.2*u, 1.2*u, '#222');
+  }
+  ctx.strokeStyle = '#2e7d32'; ctx.lineWidth = 0.9*u;
+  ctx.beginPath(); ctx.arc(0, wy + 5*u, 2.4*u, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+  // Waving arm
+  const ang = -Math.PI / 2 + 0.5 + Math.sin(time * wave) * 0.55;
+  const ax = 5*u, ay = wy + 9*u, hx = ax + Math.cos(ang) * 7*u, hy = ay + Math.sin(ang) * 7*u;
+  ctx.strokeStyle = '#7ee06f'; ctx.lineWidth = 2.4*u; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(hx, hy); ctx.stroke();
+  ctx.lineCap = 'butt';
+  circle(hx, hy, 2*u, '#7ee06f');
+  ctx.restore();
+  // Glass highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1.6*u;
+  ctx.beginPath(); ctx.arc(0, wy, wr * 0.72, 1.1 * Math.PI, 1.45 * Math.PI); ctx.stroke();
+
+  ctx.restore();
+}
+
+// Current flame strength + jitter for the rocket on the pad
+function rocketFlame() {
+  if (state === 'launch' || state === 'tunnel') return 1;
+  if (state === 'landing') return 0.4 + 0.6 * (1 - Math.min(1, phaseT / 2.6));
+  if (state === 'countdown') return 0.15 + cdIndex * 0.1;
+  if (rumble > 0) return 0.3 + 0.1 * Math.sin(time * 30);
+  return 0;
+}
+
+// ─── Countable things ────────────────────────────────────────────
+function drawFace(cx, cy, fr) {
+  for (const ex of [-0.35, 0.35]) {
+    circle(cx + ex*fr, cy - fr*0.1, fr*0.14, '#3e2723');
+    circle(cx + ex*fr + fr*0.04, cy - fr*0.15, fr*0.05, '#fff');
+  }
+  ctx.globalAlpha = 0.45;
+  circle(cx - fr*0.55, cy + fr*0.12, fr*0.12, '#ff6f91');
+  circle(cx + fr*0.55, cy + fr*0.12, fr*0.12, '#ff6f91');
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = '#3e2723'; ctx.lineWidth = Math.max(1, fr*0.09); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(cx, cy + fr*0.08, fr*0.24, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
+function drawItem(kind, x, y, r, color, ph) {
+  if (r <= 0.5) return;
+  if (kind === 'star') {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.5 : r;
+      ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color; ctx.strokeStyle = color; ctx.lineJoin = 'round'; ctx.lineWidth = r * 0.2;
+    ctx.fill(); ctx.stroke();
+    drawFace(x, y + r * 0.1, r * 0.5);
+
+  } else if (kind === 'moon') {
+    circle(x, y, r * 0.88, color);
+    ctx.globalAlpha = 0.18;
+    circle(x - r*0.45, y - r*0.35, r*0.16, '#5d4037');
+    circle(x + r*0.5,  y - r*0.15, r*0.11, '#5d4037');
+    circle(x + r*0.3,  y + r*0.55, r*0.13, '#5d4037');
+    ctx.globalAlpha = 1;
+    drawFace(x, y + r * 0.05, r * 0.55);
+
+  } else if (kind === 'alien') {
+    ctx.strokeStyle = color; ctx.lineWidth = r * 0.1;
+    for (const side of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(x + side*r*0.3, y - r*0.5); ctx.lineTo(x + side*r*0.55, y - r*0.98); ctx.stroke();
+      circle(x + side*r*0.55, y - r*0.98, r*0.15, '#ff80ab');
+    }
+    circle(x, y + r * 0.1, r * 0.82, color);
+    circle(x, y - r * 0.02, r * 0.38, '#fff');                                   // one big eye
+    circle(x + Math.sin(time * 1.5 + ph) * r * 0.1, y, r * 0.18, '#222');
+    circle(x + r * 0.06, y - r * 0.08, r * 0.06, '#fff');
+    ctx.strokeStyle = '#1b5e20'; ctx.lineWidth = Math.max(1, r * 0.07); ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.arc(x, y + r * 0.45, r * 0.2, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+    ctx.lineCap = 'butt';
+
+  } else if (kind === 'planet') {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-0.3);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = r * 0.13;
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r * 0.34, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    circle(x, y, r * 0.75, color);
+    drawFace(x, y + r * 0.05, r * 0.48);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(-0.3);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = r * 0.13;
+    ctx.beginPath(); ctx.ellipse(0, 0, r * 1.15, r * 0.34, 0, 0, Math.PI); ctx.stroke();
+    ctx.restore();
+
+  } else if (kind === 'comet') {
+    for (let i = 0; i < 3; i++) {
+      const off = (i - 1) * r * 0.32;
+      const tg = ctx.createLinearGradient(x, y, x - r * 1.9, y - r * 1.1);
+      tg.addColorStop(0, color); tg.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = tg;
+      ctx.beginPath();
+      ctx.moveTo(x + off * 0.5, y - r * 0.45 + off);
+      ctx.lineTo(x - r * (1.9 - Math.abs(off) / r), y - r * 1.1 + off);
+      ctx.lineTo(x - off * 0.5, y + r * 0.45 + off * 0.3);
+      ctx.closePath(); ctx.fill();
+    }
+    circle(x + r * 0.1, y + r * 0.1, r * 0.62, color);
+    drawFace(x + r * 0.1, y + r * 0.12, r * 0.42);
+  }
+}
+
+// Little number badge showing which count an item got
+function drawBadge(x, y, r0, n) {
+  const br = Math.max(11 * S(), r0 * 0.42);
+  const bx = x + r0 * 0.78, by = y - r0 * 0.78;
+  circle(bx, by, br, '#fff');
+  ctx.strokeStyle = '#ff9800'; ctx.lineWidth = Math.max(2, br * 0.18);
+  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.stroke();
+  label(String(n), bx, by + br * 0.05, br * 1.3, '#e65100');
+}
+
+// ─── Counting board ──────────────────────────────────────────────
+function drawBoard() {
+  const b = L.board, s = S();
+  roundRect(b.x, b.y, b.w, b.h, 26 * s, 'rgba(255,255,255,0.10)');
+  ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 3 * s;
+  roundRectPath(b.x, b.y, b.w, b.h, 26 * s); ctx.stroke();
+}
+
+function drawSign(kind, cx, cy, size, color) {
+  const t = size * 0.2;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)'; ctx.shadowOffsetY = 3 * S();
+  if (kind === 'plus') {
+    roundRect(cx - size / 2, cy - t / 2, size, t, t / 2, color);
+    roundRect(cx - t / 2, cy - size / 2, t, size, t / 2, color);
+  } else if (kind === 'minus') {
+    roundRect(cx - size / 2, cy - t / 2, size, t, t / 2, color);
+  } else {
+    roundRect(cx - size / 2, cy - t * 1.25, size, t, t / 2, color);
+    roundRect(cx - size / 2, cy + t * 0.25, size, t, t / 2, color);
+  }
+  ctx.restore();
+}
+
+function drawRound() {
+  if (!round) return;
+  const s = S(), b = L.board, G = roundGeom();
+  const r0 = G.cell * 0.38;
+  const multi = round.groups.length > 1;
+
+  const isSub = round.op === 'sub';
+  const takePop = easeOutBack(Math.min(1, round.takeDoneT * 2.5));   // numerals of a take-away round
+
+  // Prompt: "How many [icon]?" / "... in all?" / "... are left?" (or "Watch the UFO!" first)
+  const px = 30 * s, iconR = 17 * s;
+  if (isSub && !round.takeDone) {
+    label('Watch the UFO!', b.x + b.w / 2, G.promptY, px, '#fff', '#1a1a40');
+  } else {
+    const t1 = 'How many ', t2 = multi ? ' in all?' : isSub ? ' are left?' : '?';
+    ctx.font = font(px);
+    const w1 = ctx.measureText(t1).width, w2 = ctx.measureText(t2).width;
+    const x = b.x + b.w / 2 - (w1 + iconR * 2.4 + w2) / 2;
+    label(t1, x, G.promptY, px, '#fff', '#1a1a40', 'left');
+    drawItem(round.kind, x + w1 + iconR * 1.2, G.promptY, iconR, multi ? GROUP_COLORS[0] : KIND_COLORS[round.kind], 0);
+    label(t2, x + w1 + iconR * 2.4, G.promptY, px, '#fff', '#1a1a40', 'left');
+  }
+
+  // Signs, the "take away" number, and the answer box
+  const signSize = Math.min(G.cell * 1.1, 70 * s);
+  for (const col of G.cols) {
+    if (col.kind === 'plus')  drawSign('plus',  col.cx, G.cy, signSize * 1.15, '#ff80ab');
+    if (col.kind === 'minus') drawSign('minus', col.cx, G.cy, Math.min(col.w * 0.8, signSize * 1.3), '#ff8a80');
+    if (col.kind === 'eq')    drawSign('eq',    col.cx, G.cy, signSize, '#fff');
+    if (col.kind === 'k' && round.takeDone) {
+      label(String(round.take), col.cx, G.cy, Math.min(col.w * 0.9, 90 * s) * takePop, '#ff8a80', '#1a1a40');
+    }
+    if (col.kind === 'ans') {
+      const box = Math.min(col.w * 0.85, G.gh * 0.55);
+      const bx = col.cx - box / 2, by = G.cy - box / 2;
+      if (round.solved) {
+        roundRect(bx, by, box, box, box * 0.2, '#fff59d');
+        ctx.strokeStyle = '#f9a825'; ctx.lineWidth = 4 * s; roundRectPath(bx, by, box, box, box * 0.2); ctx.stroke();
+        const pop = easeOutBack(Math.min(1, round.solvedT * 3));
+        label(String(round.total), col.cx, G.cy + box * 0.04, box * 0.7 * pop, '#e65100');
+      } else {
+        roundRect(bx, by, box, box, box * 0.2, 'rgba(255,255,255,0.14)');
+        ctx.save();
+        ctx.setLineDash([8 * s, 7 * s]); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 3 * s;
+        roundRectPath(bx, by, box, box, box * 0.2); ctx.stroke();
+        ctx.restore();
+        label('?', col.cx, G.cy + box * 0.04, box * (0.6 + 0.05 * Math.sin(time * 4)), '#fff', '#1a1a40');
+      }
+    }
+  }
+
+  // Items: ghosts where they flew from, resting items, then flying ones
+  for (const it of round.items) {
+    const p = itemPos(it, G);
+    if (it.taken) {
+      // Taken by the UFO: stays visible, faded, with a dashed outline
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      drawItem(round.kind, p.x, p.y, r0, itemColor(it), it.ph);
+      ctx.globalAlpha = 0.75; ctx.setLineDash([5 * s, 5 * s]); ctx.strokeStyle = '#ff8a80'; ctx.lineWidth = 2.5 * s;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r0 * 1.05, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    } else if (it.takeT > 0 && ufo) {
+      // Rising up the tractor beam into the UFO
+      const t = easeInOut(Math.min(1, it.takeT));
+      const beam = ctx.createLinearGradient(0, ufo.y, 0, p.y + r0);
+      beam.addColorStop(0, 'rgba(178,255,89,0.55)'); beam.addColorStop(1, 'rgba(178,255,89,0.1)');
+      ctx.fillStyle = beam;
+      ctx.beginPath(); ctx.moveTo(ufo.x - r0 * 0.4, ufo.y); ctx.lineTo(ufo.x + r0 * 0.4, ufo.y);
+      ctx.lineTo(p.x + r0 * 1.2, p.y + r0); ctx.lineTo(p.x - r0 * 1.2, p.y + r0); ctx.closePath(); ctx.fill();
+      drawItem(round.kind, p.x + (ufo.x - p.x) * t, p.y + (ufo.y - p.y) * t, r0 * (1 - 0.7 * t), itemColor(it), it.ph);
+    } else if (it.gone || it.flying) {
+      ctx.save();
+      ctx.globalAlpha = 0.35; ctx.setLineDash([5 * s, 5 * s]); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * s;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r0 * 0.85, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    } else if (it.appear > 0) {
+      if (it.lit > 0) {
+        const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r0 * 1.7);
+        glow.addColorStop(0, 'rgba(255,255,200,0.9)'); glow.addColorStop(1, 'rgba(255,255,150,0)');
+        circle(p.x, p.y, r0 * 1.7, glow);
+      }
+      const pulse = it.lit > 0 ? 1 + 0.08 * Math.sin(time * 6 + it.k) : 1;
+      drawItem(round.kind, p.x, p.y, r0 * easeOutBack(it.appear) * pulse, itemColor(it), it.ph);
+    }
+  }
+  for (const it of round.items) {
+    if (!it.flying) continue;
+    const p = flyPos(it, G);
+    drawItem(round.kind, p.x, p.y, r0 * (1 - 0.55 * it.fly), itemColor(it), it.ph);
+  }
+  for (const it of round.items) if (it.label) { const p = itemPos(it, G); drawBadge(p.x, p.y, r0, it.label); }
+
+  // Written numeral under each group once solved (take-away: as soon as the UFO is done)
+  if (round.solved || (isSub && round.takeDone)) {
+    const pop = isSub ? takePop : easeOutBack(Math.min(1, round.solvedT * 2.5));
+    G.groupCols.forEach((col, g) => {
+      const c = multi ? GROUP_COLORS[g] : KIND_COLORS[round.kind];
+      label(String(round.groups[g]), col.cx, G.numY, 48 * s * pop, c, '#1a1a40');
+    });
+  }
+
+  if (ufo) drawUFO(ufo.x, ufo.y, Math.max(G.cell * 0.9, 50 * s));
+}
+
+// Little flying saucer that scoops items in take-away rounds
+function drawUFO(x, y, size) {
+  const bob = Math.sin(time * 4) * size * 0.05;
+  y += bob;
+  // Glass dome with a tiny passenger
+  circle(x, y - size * 0.12, size * 0.28, 'rgba(178,235,242,0.9)');
+  circle(x, y - size * 0.12, size * 0.13, '#ce93d8');
+  circle(x - size * 0.045, y - size * 0.14, size * 0.03, '#222');
+  circle(x + size * 0.045, y - size * 0.14, size * 0.03, '#222');
+  // Saucer
+  ctx.fillStyle = '#90a4ae';
+  ctx.beginPath(); ctx.ellipse(x, y, size * 0.55, size * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#cfd8dc';
+  ctx.beginPath(); ctx.ellipse(x, y - size * 0.04, size * 0.5, size * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+  // Blinking lights
+  for (let i = 0; i < 5; i++) {
+    const on = Math.floor(time * 6 + i) % 2 === 0;
+    circle(x + (i - 2) * size * 0.2, y + size * 0.05, size * 0.045, on ? '#ffeb3b' : '#ff4081');
+  }
+}
+
+// ─── Number-row keyboard ─────────────────────────────────────────
+function drawKeyboard() {
+  const s = S(), kb = L.kb, pad = kb.gap * 1.1;
+  roundRect(kb.x - pad, kb.y - pad, kb.w + pad * 2, kb.h + kb.depth + pad * 2, kb.h * 0.25, 'rgba(15,15,35,0.6)');
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 2 * s;
+  roundRectPath(kb.x - pad, kb.y - pad, kb.w + pad * 2, kb.h + kb.depth + pad * 2, kb.h * 0.25); ctx.stroke();
+
+  keys.forEach((k, i) => {
+    const r = L.keyRects[i];
+    const isHint = state === 'hint' && String(hintDigit) === k.d;
+    const pulse  = 0.5 + 0.5 * Math.sin(time * 6);
+    const down   = kb.depth * 0.8 * Math.min(1, k.press * 1.5);
+    const wig    = Math.sin(time * 40) * k.wiggle * 4 * s;
+    const rad    = r.w * 0.16;
+    ctx.save();
+    ctx.translate(r.x + r.w / 2 + wig, r.y + r.h / 2);
+    if (isHint) ctx.scale(1 + 0.07 * pulse, 1 + 0.07 * pulse);
+    ctx.translate(-r.w / 2, -r.h / 2);
+
+    if (isHint) {   // glowing halo around the right key
+      ctx.save();
+      ctx.shadowColor = '#ffeb3b'; ctx.shadowBlur = (18 + 22 * pulse) * s;
+      roundRect(-4 * s, -4 * s, r.w + 8 * s, r.h + kb.depth + 8 * s, rad * 1.3, `rgba(255,235,59,${0.55 + 0.4 * pulse})`);
+      ctx.restore();
+    }
+    // Keycap skirt (side), face, and dished top
+    roundRect(0, kb.depth, r.w, r.h, rad, isHint ? '#f9a825' : '#9e9e9e');
+    const face = ctx.createLinearGradient(0, down, 0, down + r.h);
+    face.addColorStop(0, isHint ? '#fff9c4' : '#fafafa');
+    face.addColorStop(1, isHint ? '#ffe082' : '#d6d6d6');
+    roundRect(0, down, r.w, r.h, rad, face);
+    const inset = r.w * 0.1;
+    roundRect(inset, down + inset * 0.6, r.w - inset * 2, r.h - inset * 2, rad * 0.8, isHint ? '#fffde7' : (hoverKey === i ? '#ffffff' : '#f2f2f2'));
+    if (k.good > 0) { ctx.globalAlpha = k.good; roundRect(0, down, r.w, r.h, rad, '#69f0ae'); ctx.globalAlpha = 1; }
+    label(k.d, r.w / 2, down + r.h * 0.47, r.h * 0.52, isHint ? '#e65100' : '#37474f');
+    ctx.restore();
+
+    // Bouncing arrow pointing at the hint key
+    if (isHint) {
+      const ax = r.x + r.w / 2, ay = r.y - 18 * s - Math.abs(Math.sin(time * 5)) * 12 * s, aw = 16 * s;
+      ctx.fillStyle = '#ffeb3b'; ctx.strokeStyle = '#e65100'; ctx.lineWidth = 2.5 * s; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(ax - aw, ay - aw); ctx.lineTo(ax + aw, ay - aw); ctx.lineTo(ax, ay); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+    }
+  });
+}
+
+// ─── Particles, popups, bubble ───────────────────────────────────
+function drawParticles(types) {
+  for (const p of particles) {
+    if (!types.includes(p.type)) continue;
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life * (p.type === 'smoke' ? 0.55 : 1.5)));
+    if (p.type === 'confetti') {
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.col; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    } else if (p.type === 'spark') {
+      circle(p.x, p.y, p.r * p.life, p.col);
+    } else {
+      circle(p.x, p.y, p.r, '#e8e6f0');
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPopups() {
+  const s = S();
+  for (const p of popups) {
+    const age = (1 - p.life) * p.max;
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life * 2.5));
+    label(p.text, p.x, p.y, p.size * s * easeOutBack(Math.min(1, age * 4)), p.color, '#4a148c');
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBubble(rx, tipY) {
+  if (bubble.t <= 0 || !bubble.text || tipY < 0) return;
+  const s = S(), px = 22 * s;
+  ctx.font = font(px);
+  const tw = ctx.measureText(bubble.text).width;
+  const bw = tw + 30 * s, bh = px * 2;
+  const bx = clamp(rx - bw / 2, 8, W() - bw - 8);
+  const by = Math.max(70 * s, tipY - bh - 22 * s);
+  ctx.globalAlpha = Math.min(1, bubble.t * 4);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.3)'; ctx.shadowOffsetY = 3 * s; ctx.shadowBlur = 6 * s;
+  roundRect(bx, by, bw, bh, bh * 0.45, '#fff');
+  ctx.restore();
+  ctx.fillStyle = '#fff';
+  const tx = clamp(rx, bx + 18 * s, bx + bw - 18 * s);
+  ctx.beginPath(); ctx.moveTo(tx - 10 * s, by + bh - 1); ctx.lineTo(tx + 10 * s, by + bh - 1); ctx.lineTo(rx, by + bh + 16 * s); ctx.closePath(); ctx.fill();
+  label(bubble.text, bx + bw / 2, by + bh / 2 + 1, px, '#4a148c');
+  ctx.globalAlpha = 1;
+}
+
+// ─── HUD & overlays ──────────────────────────────────────────────
+function drawHUD() {
+  const s = S();
+  label('🚀 Count & Blast Off!', W() / 2, 34 * s + 6, 30 * s, '#fff59d', '#311b92');
+  label(`Level ${planetIdx + 1}  ·  ${scheme().name}  ·  ${levelDesc(planetIdx)}`, W() / 2, 66 * s + 6, 18 * s, 'rgba(255,255,255,0.85)', '#1a1a40');
+}
+
+// ─── Title screen: level select ──────────────────────────────────
+// Four big level cards inside the board
+function titleCards() {
+  const b = L.board, gap = b.w * 0.03;
+  const cw = (b.w * 0.92 - gap * 3) / START_LEVELS;
+  const ch = Math.min(b.h * 0.5, cw * 1.35);
+  const x0 = b.x + b.w * 0.04, y = b.y + b.h * 0.31;
+  const cards = [];
+  for (let i = 0; i < START_LEVELS; i++) cards.push({ x: x0 + i * (cw + gap), y, w: cw, h: ch });
+  return cards;
+}
+
+function cardAt(mx, my) {
+  if (!L) return -1;
+  return titleCards().findIndex(c => mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h);
+}
+
+function drawTitleOverlay() {
+  const b = L.board, s = S(), cx = b.x + b.w / 2;
+  const title = 'Count & Blast Off!';
+  label(title, cx, b.y + b.h * 0.12, fitSize(title, 64 * s, b.w * 0.92), '#fff59d', '#4a148c');
+  const sub = 'Count the things · press the number · fuel the rocket!';
+  label(sub, cx, b.y + b.h * 0.23, fitSize(sub, 20 * s, b.w * 0.9), '#fff', '#1a1a40');
+
+  titleCards().forEach((c, i) => {
+    const sc = SCHEMES[i % SCHEMES.length];
+    const isLast = i === savedLevel, isHover = i === titleHover;
+    const grow = isHover ? 1.05 : 1;
+    const bob = isLast ? Math.sin(time * 3) * 4 * s : 0;
+    ctx.save();
+    ctx.translate(c.x + c.w / 2, c.y + c.h / 2 + bob);
+    ctx.scale(grow, grow);
+    ctx.translate(-c.w / 2, -c.h / 2);
+    const rad = c.w * 0.16;
+    // Card body in that planet's sky colours
+    if (isLast) {
+      ctx.save();
+      ctx.shadowColor = '#ffeb3b'; ctx.shadowBlur = (14 + 10 * Math.sin(time * 4)) * s;
+      roundRect(0, 0, c.w, c.h, rad, '#ffeb3b');
+      ctx.restore();
+    }
+    const g = ctx.createLinearGradient(0, 0, 0, c.h);
+    g.addColorStop(0, sc.sky[2]); g.addColorStop(1, sc.sky[0]);
+    roundRect(0, 0, c.w, c.h, rad, g);
+    ctx.strokeStyle = isLast ? '#ffeb3b' : isHover ? '#fff' : 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = (isLast || isHover ? 4 : 2.5) * s;
+    roundRectPath(0, 0, c.w, c.h, rad); ctx.stroke();
+    // Planet with its ring, level number on top
+    const pr = c.w * 0.27, py = c.h * 0.36;
+    ctx.save(); ctx.translate(c.w / 2, py); ctx.rotate(-0.25);
+    ctx.strokeStyle = sc.ring; ctx.lineWidth = pr * 0.12;
+    ctx.beginPath(); ctx.ellipse(0, 0, pr * 1.45, pr * 0.32, 0, Math.PI, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    const pg = ctx.createRadialGradient(c.w / 2 - pr * 0.3, py - pr * 0.3, pr * 0.1, c.w / 2, py, pr);
+    pg.addColorStop(0, sc.horizon[0]); pg.addColorStop(1, sc.horizon[1]);
+    circle(c.w / 2, py, pr, pg);
+    ctx.save(); ctx.translate(c.w / 2, py); ctx.rotate(-0.25);
+    ctx.strokeStyle = sc.ring; ctx.lineWidth = pr * 0.12;
+    ctx.beginPath(); ctx.ellipse(0, 0, pr * 1.45, pr * 0.32, 0, 0, Math.PI); ctx.stroke();
+    ctx.restore();
+    label(String(i + 1), c.w / 2, py + pr * 0.05, pr * 1.3, '#fff', '#1a1a40');
+    // Short label + which key starts it
+    label(LEVEL_DESCS[i], c.w / 2, c.h * 0.74, fitSize(LEVEL_DESCS[i], 22 * s, c.w * 0.88), '#fff', '#1a1a40');
+    label(`press ${i + 1}`, c.w / 2, c.h * 0.89, Math.min(15 * s, c.w * 0.12), 'rgba(255,255,255,0.75)', null);
+    ctx.restore();
+  });
+
+  const foot = `Press 1–4 or tap a level  ·  SPACE plays Level ${savedLevel + 1}`;
+  ctx.globalAlpha = 0.65 + 0.35 * Math.sin(time * 4);
+  label(foot, cx, b.y + b.h * 0.92, fitSize(foot, 26 * s, b.w * 0.92), '#80deea', '#0d47a1');
+  ctx.globalAlpha = 1;
+}
+
+function drawLandedOverlay() {
+  const b = L.board, s = S(), cx = b.x + b.w / 2;
+  const t1 = `🎉 Welcome to ${scheme().name}! 🎉`;
+  label(t1, cx, b.y + b.h * 0.28, fitSize(t1, 50 * s, b.w * 0.92), '#fff59d', '#4a148c');
+  const t2 = `Next: Level ${planetIdx + 1}  ·  ${levelDesc(planetIdx)}`;
+  label(t2, cx, b.y + b.h * 0.5, fitSize(t2, 28 * s, b.w * 0.9), '#fff', '#1a1a40');
+  ctx.globalAlpha = 0.65 + 0.35 * Math.sin(time * 4);
+  label('Press SPACE to fly again', cx, b.y + b.h * 0.75, 36 * s, '#80deea', '#0d47a1');
+  ctx.globalAlpha = 1;
+}
+
+function drawCountdown() {
+  if (!cdText) return;
+  const b = L.board, s = S();
+  const big = cdText.length === 1;
+  const px = (big ? 170 : 96) * s * (1 + 0.35 * cdPop);
+  label(cdText, b.x + b.w / 2, b.y + b.h * 0.5, fitSize(cdText, px, b.w * 0.95), big ? '#fff59d' : '#ffab40', '#bf360c');
+}
+
+// Warp-speed tunnel scene between planets
+function drawTunnel() {
+  const w = W(), h = H(), s = S();
+  const cx = w / 2, cy = h * 0.32, f = Math.min(w, h) * 0.22;
+  const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.8);
+  bg.addColorStop(0, '#000010');
+  bg.addColorStop(1, `hsl(${(time * 50) % 360}, 70%, 22%)`);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+  for (const st of warp) {
+    const z2 = st.z + 0.09;
+    const x1 = cx + st.x * f / st.z, y1 = cy + st.y * f / st.z;
+    const x2 = cx + st.x * f / z2,   y2 = cy + st.y * f / z2;
+    ctx.globalAlpha = Math.min(1, (1 - st.z) * 1.4);
+    ctx.strokeStyle = `hsl(${(st.hue + time * 80) % 360}, 100%, 78%)`;
+    ctx.lineWidth = (1 - st.z) * 4 * s + 0.5;
+    ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x1, y1); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  const size = Math.min(h * 0.38, w * 0.24);
+  drawRocket(cx + Math.sin(time * 3) * w * 0.02, h * 0.92 - size * 0.4 + Math.sin(time * 5) * 6 * s, size, 1, 9);
+  drawBubble(cx, h * 0.92 - size * 1.4);
+}
+
+// ─── Main draw ───────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W(), H());
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - 0.5) * shake * 2, (Math.random() - 0.5) * shake * 2);
+
+  if (state === 'tunnel') {
+    drawTunnel();
+  } else {
+    drawSky();
+    drawGround();
+    drawBoard();
+    drawGauge();
+
+    // Rocket on (or above) the pad, jittering while it rumbles
+    const flame = rocketFlame();
+    const jit = (rumble > 0 || state === 'countdown' || state === 'launch') ? (Math.random() - 0.5) * (2 + cdIndex) * S() : 0;
+    const happy = state === 'title' || state === 'fueling' || state === 'landed' || state === 'intro';
+    ctx.save();
+    ctx.beginPath(); ctx.rect(-50, -50, W() + 100, GY() + 50); ctx.clip();   // flame stops at the ground
+    drawRocket(L.padX + jit, L.base - rocketLift, L.rocketH, flame, happy ? 8 : 4);
+    ctx.restore();
+    drawPad();
+    drawParticles(['smoke']);
+
+    if (state === 'title') drawTitleOverlay();
+    else if (state === 'landed') drawLandedOverlay();
+    else drawRound();
+    drawCountdown();
+    drawKeyboard();
+    if (state !== 'title') drawHUD();
+    drawBubble(L.padX, L.base - rocketLift - L.rocketH);
+  }
+  drawParticles(['confetti', 'spark']);
+  drawPopups();
+  ctx.restore();
+
+  if (flash > 0) { ctx.fillStyle = `rgba(255,255,255,${flash})`; ctx.fillRect(0, 0, W(), H()); }
+}
+
+// ─── Input ───────────────────────────────────────────────────────
+// Top-row digits and numpad digits both count
+function digitFromEvent(e) {
+  const m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code || '');
+  if (m) return Number(m[1]);
+  if (/^[0-9]$/.test(e.key)) return Number(e.key);
+  return null;
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.metaKey || e.ctrlKey) return;            // leave browser shortcuts alone
+  const isSpace = e.code === 'Space' || e.key === ' ';
+  const isEnter = e.key === 'Enter';
+  const d = digitFromEvent(e);
+  if (isSpace || d !== null || (isEnter && (state === 'title' || state === 'landed'))) e.preventDefault();
+  if (e.repeat) return;                          // holding a key does nothing
+
+  if (e.key === 'Escape') { if (state !== 'title') goTitle(); return; }   // back to level select
+  if (state === 'title') {
+    ensureAudio();
+    if (d !== null && d >= 1 && d <= START_LEVELS) startGame(d - 1);      // 1–4 picks a level
+    else if (isSpace || isEnter) startGame(savedLevel);                   // remembered level
+    return;
+  }
+  if (state === 'landed') { if (isSpace || isEnter) flyAgain(); return; }
+  if (d !== null && state !== 'tunnel') handleDigit(d);
+});
+
+function keyAt(mx, my) {
+  if (!L) return -1;
+  return L.keyRects.findIndex(r => mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h + L.kb.depth);
+}
+
+canvas.addEventListener('pointerdown', function(e) {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  if (state === 'title') {
+    // Tap a level card, or keycaps 1–4
+    const c = cardAt(mx, my);
+    if (c >= 0) { startGame(c); return; }
+    const k = keyAt(mx, my);
+    if (k >= 0 && k < START_LEVELS) startGame(k);   // keycaps 1–4 are the first four in the row
+    return;
+  }
+  if (state === 'landed') { flyAgain(); return; }
+  if (state === 'tunnel') return;
+  const i = keyAt(mx, my);
+  if (i >= 0) { ensureAudio(); handleDigit(Number(keys[i].d)); }
+});
+
+canvas.addEventListener('pointermove', function(e) {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  hoverKey   = state === 'tunnel' ? -1 : keyAt(mx, my);
+  titleHover = state === 'title' ? cardAt(mx, my) : -1;
+  const titleKey = state === 'title' && hoverKey >= 0 && hoverKey < START_LEVELS;
+  canvas.style.cursor = (titleHover >= 0 || titleKey || (state !== 'title' && hoverKey >= 0) || state === 'landed') ? 'pointer' : 'default';
+});
+
+// ─── Loop ────────────────────────────────────────────────────────
+let lastT = 0;
+function loop(ts) {
+  const dt = Math.min((ts - lastT) / 1000, 0.05);
+  lastT = ts;
+  L = layout();
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+initStars();
+L = layout();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -15,13 +15,14 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      overflow: hidden;
+      overflow-x: hidden;
       position: relative;
+      padding: 30px 16px;
     }
 
     /* Floating background shapes */
     .bubble {
-      position: absolute;
+      position: fixed;
       border-radius: 50%;
       opacity: 0.15;
       animation: float linear infinite;
@@ -48,11 +49,11 @@
     /* Title */
     .title {
       text-align: center;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
       z-index: 1;
     }
     .title h1 {
-      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-size: clamp(2.3rem, 5vw, 3.6rem);
       color: #fff;
       text-shadow: 4px 4px 0 #ff6b6b, 6px 6px 0 #ffd93d;
       letter-spacing: 2px;
@@ -66,28 +67,32 @@
       font-size: clamp(1rem, 3vw, 1.6rem);
       color: #fff;
       text-shadow: 2px 2px 0 rgba(0,0,0,0.2);
-      margin-top: 8px;
+      margin-top: 4px;
     }
 
     /* Game cards grid */
     .games-grid {
-      display: flex;
-      gap: 40px;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
+      gap: 26px;
       justify-content: center;
+      width: 100%;
+      max-width: 1100px;
       z-index: 1;
     }
 
     .game-card {
       background: #fff;
       border-radius: 32px;
-      padding: 40px 50px;
+      padding: 20px 22px 18px;
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       cursor: pointer;
       text-decoration: none;
       box-shadow: 0 12px 40px rgba(0,0,0,0.15), 0 0 0 4px rgba(255,255,255,0.5);
       transition: transform 0.2s ease, box-shadow 0.2s ease;
-      max-width: 300px;
       position: relative;
       overflow: hidden;
     }
@@ -105,33 +110,54 @@
     }
     .game-card:hover::before { opacity: 1; }
     .game-card:active { transform: scale(0.97); }
+    .game-card:focus-visible { outline: 5px solid #fff; outline-offset: 4px; }
 
     .game-card.dragon { background: linear-gradient(135deg, #fff9e6, #ffe4b5); }
     .game-card.river  { background: linear-gradient(135deg, #e6f0ff, #b5d8ff); }
     .game-card.boy    { background: linear-gradient(135deg, #e6f9ff, #b5e8ff); }
+    .game-card.jigsaw { background: linear-gradient(135deg, #fff0f6, #ffc6e0); }
+    .game-card.blocks { background: linear-gradient(135deg, #f3ffe6, #c9f2a8); }
+    .game-card.rocket { background: linear-gradient(135deg, #ede6ff, #c3b5ff); }
 
     .card-emoji {
-      font-size: clamp(4rem, 8vw, 6rem);
+      font-size: clamp(2.6rem, 4vw, 3.2rem);
       display: block;
-      margin-bottom: 16px;
+      white-space: nowrap;
+      line-height: 1.1;
+      margin-bottom: 8px;
       animation: wiggle 2s ease-in-out infinite;
     }
     @keyframes wiggle {
       0%, 100% { transform: rotate(-5deg); }
       50%       { transform: rotate(5deg); }
     }
-    .game-card.boy .card-emoji { animation-delay: 0.5s; }
+    .game-card:nth-child(2n) .card-emoji { animation-delay: 0.5s; }
+    .game-card:nth-child(3n) .card-emoji { animation-delay: 1s; }
+
+    /* Small "what you'll learn" tag above the title */
+    .skill {
+      display: inline-block;
+      background: rgba(255,255,255,0.75);
+      color: #555;
+      border-radius: 999px;
+      padding: 3px 12px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
 
     .card-title {
-      font-size: clamp(1.4rem, 3vw, 1.9rem);
+      font-size: clamp(1.3rem, 2.4vw, 1.7rem);
       font-weight: bold;
       color: #333;
+      line-height: 1.15;
       margin-bottom: 8px;
     }
     .card-subtitle {
-      font-size: clamp(0.9rem, 2vw, 1.15rem);
+      font-size: clamp(0.9rem, 1.4vw, 1.05rem);
       color: #666;
       line-height: 1.4;
+      flex: 1;                 /* pushes key hint + Play to the card bottom */
     }
 
     .key-hint {
@@ -140,7 +166,8 @@
       color: #fff;
       padding: 4px 12px;
       border-radius: 8px;
-      font-size: 1.1rem;
+      font-size: 1rem;
+      white-space: nowrap;
       margin-top: 14px;
       box-shadow: 0 3px 0 #111;
       font-family: monospace;
@@ -148,12 +175,12 @@
 
     .play-btn {
       display: block;
-      margin-top: 20px;
+      margin-top: 12px;
       background: linear-gradient(135deg, #ff6b6b, #ffd93d);
       color: #fff;
       border: none;
       border-radius: 50px;
-      padding: 12px 36px;
+      padding: 9px 34px;
       font-size: 1.3rem;
       font-family: inherit;
       font-weight: bold;
@@ -169,11 +196,21 @@
     .game-card.boy .play-btn {
       background: linear-gradient(135deg, #4fc3f7, #9b59b6);
     }
+    .game-card.jigsaw .play-btn { background: linear-gradient(135deg, #ff6bd6, #ff9a3c); }
+    .game-card.blocks .play-btn { background: linear-gradient(135deg, #6bcb77, #2e9e5b); }
+    .game-card.rocket .play-btn { background: linear-gradient(135deg, #7c4dff, #311b92); }
+    .new-badge {
+      position: absolute; top: 14px; right: -34px;
+      transform: rotate(35deg);
+      background: #ff3d71; color: #fff;
+      padding: 4px 40px; font-size: 0.95rem; font-weight: bold;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
     .play-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 0 rgba(0,0,0,0.2); }
     .play-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.2); }
 
     footer {
-      margin-top: 40px;
+      margin-top: 28px;
       color: rgba(255,255,255,0.7);
       font-size: 0.9rem;
       z-index: 1;
@@ -223,10 +260,10 @@
     <!-- Game 1: Dragon Princess -->
     <a class="game-card dragon" href="game1.html">
       <span class="card-emoji">🐉👸</span>
+      <span class="skill">⌨️ Space bar</span>
       <div class="card-title">Dragon & Princess!</div>
       <div class="card-subtitle">
-        Help the princess jump over obstacles!<br>
-        The dragon is chasing her! 😱
+        Help the princess jump over obstacles! The dragon is chasing her! 😱
       </div>
       <span class="key-hint">SPACE — Jump!</span>
       <span class="play-btn">▶ Play!</span>
@@ -235,10 +272,10 @@
     <!-- Game 3: River Crossing -->
     <a class="game-card river" href="game3.html">
       <span class="card-emoji">👸🌊🐟</span>
+      <span class="skill">🔤 Letters</span>
       <div class="card-title">Cross the River!</div>
       <div class="card-subtitle">
-        Help the princess jump across<br>
-        the river on floating bricks! 🧱
+        Help the princess jump across the river on floating bricks! 🧱
       </div>
       <span class="key-hint">A · B · C — Jump!</span>
       <span class="play-btn">▶ Play!</span>
@@ -247,12 +284,51 @@
     <!-- Game 2: Boy at Desk -->
     <a class="game-card boy" href="game2.html">
       <span class="card-emoji">🧒🪥🍎</span>
+      <span class="skill">🔢 Numbers</span>
       <div class="card-title">Daily Routine!</div>
       <div class="card-subtitle">
-        Help the boy eat, brush teeth,<br>
-        and wash his face! 🌟
+        Help the boy eat, brush teeth, and wash his face! 🌟
       </div>
       <span class="key-hint">5 · 6 · 7 — Catch!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+    <!-- Game 4: Letter Jigsaw -->
+    <a class="game-card jigsaw" href="game4.html">
+      <span class="new-badge">NEW</span>
+      <span class="card-emoji">🧩🐱</span>
+      <span class="skill">🔤 Letters</span>
+      <div class="card-title">Letter Jigsaw!</div>
+      <div class="card-subtitle">
+        Spell the word to finish the picture! 4 levels, from CAT to ELEPHANT 🖼️
+      </div>
+      <span class="key-hint">C · A · T — Snap!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+    <!-- Game 5: Magic Letter Blocks (3D) -->
+    <a class="game-card blocks" href="game5.html">
+      <span class="new-badge">NEW</span>
+      <span class="card-emoji">🧸🔤</span>
+      <span class="skill">⌨️ Whole keyboard</span>
+      <div class="card-title">Magic Letter Blocks!</div>
+      <div class="card-subtitle">
+        Every key drops a 3D toy block. Play freely, or spell the picture! ✨
+      </div>
+      <span class="key-hint">Free Play · Spell It!</span>
+      <span class="play-btn">▶ Play!</span>
+    </a>
+
+    <!-- Game 6: Count & Blast Off -->
+    <a class="game-card rocket" href="game6.html">
+      <span class="new-badge">NEW</span>
+      <span class="card-emoji">🚀⭐</span>
+      <span class="skill">🔢 Counting</span>
+      <div class="card-title">Count &amp; Blast Off!</div>
+      <div class="card-subtitle">
+        Count, add and take away to fuel the rocket! 4 levels 🪐
+      </div>
+      <span class="key-hint">1 · 2 · 3 — Count!</span>
       <span class="play-btn">▶ Play!</span>
     </a>
 
