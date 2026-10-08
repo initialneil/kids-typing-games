@@ -341,9 +341,10 @@ if (synth) {
   pickVoice();
   if (synth.addEventListener) synth.addEventListener('voiceschanged', pickVoice);
 }
-// A lone capital ("C") is read as "capital C"; lower-case it. A lone "a" reads as "uh", so say "ay".
+// A bare capital ("C") is read as "capital C"; lower-case it. Measured on macOS Samantha: lower-case
+// letters read as letter names (even "a"), while "ay" reads as "eye", so no phonetic respelling.
 function speakableLetters(text) {
-  return text.replace(/\b([A-Z])\b/g, (_, ch) => ch === 'A' ? 'ay' : ch.toLowerCase());
+  return text.replace(/\b([A-Z])\b/g, ch => ch.toLowerCase());
 }
 
 function speak(text, interrupt = true) {

@@ -143,9 +143,10 @@ function playPop(i)  { tone(523 * Math.pow(1.122, i), null, 0.22, 'triangle', 0.
 function playWin()   { [523, 659, 784, 1047].forEach((f, i) => tone(f, null, 0.32, 'triangle', 0.25, i * 0.12)); }
 
 // ─── Speech (a bonus — the game works fine without it) ──────────
-// A lone capital ("C") is read as "capital C"; lower-case it. A lone "a" reads as "uh", so say "ay".
+// A bare capital ("C") is read as "capital C"; lower-case it. Measured on macOS Samantha: lower-case
+// letters read as letter names (even "a"), while "ay" reads as "eye", so no phonetic respelling.
 function speakableLetters(text) {
-  return text.replace(/\b([A-Z])\b/g, (_, ch) => ch === 'A' ? 'ay' : ch.toLowerCase());
+  return text.replace(/\b([A-Z])\b/g, ch => ch.toLowerCase());
 }
 function say(text, interrupt) {
   text = speakableLetters(text);

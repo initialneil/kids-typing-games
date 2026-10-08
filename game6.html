@@ -460,10 +460,12 @@ function newRound() {
     const a = randInt(1, sum - 1);
     groups = [a, sum - a];
   } else {
-    // Take away: N items, the UFO scoops K of them (sometimes all → answer 0)
-    const n = randInt(2, 9);
-    take = Math.random() < 0.12 ? n : randInt(1, n - 1);
-    groups = [n];
+    // Take away: pick the ANSWER first (evenly 1–8, never the same twice in a row),
+    // then how many the UFO scoops. Picking N then K skews answers toward 0–2.
+    // Now and then the UFO takes them all → answer 0 (never twice in a row).
+    const left = (lastTotal !== 0 && Math.random() < 0.08) ? 0 : randDiff(1, 8, lastTotal);
+    take = randInt(left === 0 ? 2 : 1, 9 - left);
+    groups = [left + take];
   }
   total = groups.reduce((a, b) => a + b, 0) - take;
   const op = mode === 'sub' ? 'sub' : groups.length > 1 ? 'add' : 'count';
