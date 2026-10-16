@@ -353,8 +353,10 @@ function unstickSpeech(s) {
   // nothing we say lasts 8 s: still busy after that means the queue is stuck
   if ((s.speaking || s.pending) && performance.now() - lastSpeechStart > 8000) s.cancel();
 }
-function trackUtterance(u) {
-  u.onstart = () => { lastSpeechStart = performance.now(); };
+function trackUtterance(u, s) {
+  // the "stuck" clock starts when a line is queued onto an idle engine, and moves on each start/end
+  if (!s.speaking && !s.pending) lastSpeechStart = performance.now();
+  u.onstart = u.onend = () => { lastSpeechStart = performance.now(); };
   keepUtterances.push(u);
   if (keepUtterances.length > 20) keepUtterances.shift();
 }
@@ -373,7 +375,7 @@ function speak(text, interrupt = true) {
     u.lang = voice ? voice.lang : 'en-US';
     u.pitch = 1.2;
     u.rate = 0.95;
-    trackUtterance(u);
+    trackUtterance(u, synth);
     synth.speak(u);
   } catch (e) { /* speech is a bonus; never break the game */ }
 }

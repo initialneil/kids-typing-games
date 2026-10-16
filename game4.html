@@ -155,8 +155,10 @@ function unstickSpeech(s) {
   // nothing we say lasts 8 s: still busy after that means the queue is stuck
   if ((s.speaking || s.pending) && performance.now() - lastSpeechStart > 8000) s.cancel();
 }
-function trackUtterance(u) {
-  u.onstart = () => { lastSpeechStart = performance.now(); };
+function trackUtterance(u, s) {
+  // the "stuck" clock starts when a line is queued onto an idle engine, and moves on each start/end
+  if (!s.speaking && !s.pending) lastSpeechStart = performance.now();
+  u.onstart = u.onend = () => { lastSpeechStart = performance.now(); };
   keepUtterances.push(u);
   if (keepUtterances.length > 20) keepUtterances.shift();
 }
@@ -170,7 +172,7 @@ function say(text, interrupt) {
     const speak = () => {
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 0.9; u.pitch = 1.2; u.lang = 'en-US';
-      trackUtterance(u);
+      trackUtterance(u, window.speechSynthesis);
       window.speechSynthesis.speak(u);
     };
     unstickSpeech(window.speechSynthesis);
