@@ -390,6 +390,7 @@ const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 300);
 const CAM_OFFSET = new THREE.Vector3(-2.4, 3.0, 11.5);     // side-on 3/4 view
 const camTarget = new THREE.Vector3(1.0, 1.3, 0);
 let camDist = 1;
+let endZoom = 1;      // eases back at the castle so the whole ending (castle, princess, dragon) fits
 
 scene.add(new THREE.HemisphereLight('#fff6e8', '#b8e09a', 1.7));
 const sun = new THREE.DirectionalLight('#fff1dc', 2.2);
@@ -642,11 +643,18 @@ const gateDoors = [];
   castle.traverse(o => { if (o.isMesh) o.castShadow = true; });
   scene.add(castle);
 })();
-const CASTLE_FAR = new THREE.Vector3(34, 0, -62);
-const CASTLE_NEAR = new THREE.Vector3(14, 0, -14);
+// The castle sits beside the path. It waits off-screen to the right and, on a win, scrolls in
+// exactly like the scenery while the world brakes so its gate stops at CASTLE_WIN (no sliding).
 const CASTLE_WIN = new THREE.Vector3(6.5, 0, -3.3);
-const WIN_PRINCESS_X = 6.5;
+const CASTLE_ENTER_DIST = 13;                  // how far right of its stop it starts (off-screen)
+const BRAKE = 2.2;                             // world deceleration while the castle rolls in (u/s²)
+const WALK_SPEED = 2.3;                        // princess walking pace at the end (u/s), not a rush
 const GATE_Z = CASTLE_WIN.z + 1.0;
+function parkCastle() {
+  castle.position.set(CASTLE_WIN.x + CASTLE_ENTER_DIST, 0, CASTLE_WIN.z);
+  castle.visible = false;
+}
+parkCastle();
 
 // ---------------------------------------------------------------
 //  Princess (built from primitives, faces +x)
@@ -1157,8 +1165,7 @@ function simStep(h) {
     }
   }
 
-  if (game.state === 'winning' && game.stateTime > 2.6) setState('won');
-  if (game.state === 'won' && game.stateTime > 8) startLevel(Math.min(MAX_LEVEL, game.level + 1));
+  if (game.state === 'won' && game.stateTime > 10) startLevel(game.level);   // replay the same level
 }
 
 let simAcc = 0;
@@ -1184,13 +1191,11 @@ function setState(s) {
   game.stateTime = 0;
   if (s === 'play') game.spawnIn = 1.2;            // first obstacle arrives shortly after the run-in
   if (s === 'won') {
-    gateOpen = 0.001;
-    sfx.gate();
     later(0.4, () => { sfx.fanfare(); fireworks(5); });
     later(1.4, () => fireworks(4));
     confettiBurst(new THREE.Vector3(CASTLE_WIN.x, 5, CASTLE_WIN.z + 2), 160, 4, 4);
     speak('Hooray!');
-    banner.textContent = game.level < MAX_LEVEL ? '🎉 Hooray! Press SPACE for the next level' : '🎉 Hooray! Press SPACE to play again';
+    banner.textContent = '🎉 Hooray! Press SPACE to play again';
     banner.classList.add('show');
   }
 }
@@ -1203,8 +1208,8 @@ function startLevel(n) {
   game.score = 0; game.gems = 0; game.tension = TENSION_START; game.saidJump = false;
   Object.assign(P, { y: 0, vy: 0, air: false, queued: 0, evJump: null, evLand: 0, dizzy: 0 });
   lastLetters = [];
-  princessX = -7; princessZ = 0; dragonX = -12; dragonFriendly = 0; gateOpen = 0; castleProg = 0;
-  castle.position.copy(CASTLE_FAR);
+  princessX = -7; princessZ = 0; dragonX = -12; dragonFriendly = 0; gateOpen = 0; endPhase = null; endZoom = 1;
+  parkCastle();
   overlay.classList.add('hide');
   banner.classList.remove('show');
   hud.classList.add('show');
@@ -1214,6 +1219,8 @@ function startLevel(n) {
 }
 function startWinning() {
   clearObstacles(true);
+  endPhase = 'arrive';
+  castle.visible = true;
   setState('winning');
 }
 function backToTitle() {
@@ -1221,8 +1228,8 @@ function backToTitle() {
   if (synth) { try { synth.cancel(); } catch (e) { /* ignore */ } }
   Object.assign(P, { y: 0, vy: 0, air: false, queued: 0, dizzy: 0 });
   game.tension = TENSION_START;
-  dragonFriendly = 0; gateOpen = 0; castleProg = 0; princessZ = 0;
-  castle.position.copy(CASTLE_FAR);
+  dragonFriendly = 0; gateOpen = 0; endPhase = null; endZoom = 1; princessX = 0; princessZ = 0;
+  parkCastle();
   banner.classList.remove('show');
   hud.classList.remove('show');
   renderTitle();
@@ -1270,7 +1277,7 @@ function handleKey(key, code = '') {
   }
   if (key === 'Escape') { backToTitle(); return; }
   if (game.state === 'won') {
-    if (game.stateTime > 1.2) startLevel(Math.min(MAX_LEVEL, game.level + 1));
+    if (game.stateTime > 1.2) startLevel(game.level);
     return;
   }
   if (game.state !== 'play') return;
@@ -1312,7 +1319,8 @@ renderer.domElement.addEventListener('pointerdown', e => {
 // ---------------------------------------------------------------
 //  Animation (visual only — reads the simulation)
 // ---------------------------------------------------------------
-let princessX = 0, princessZ = 0, dragonX = -4, dragonFriendly = 0, gateOpen = 0, castleProg = 0;
+let princessX = 0, princessZ = 0, dragonX = -4, dragonFriendly = 0, gateOpen = 0;
+let endPhase = null;   // win sequence: 'arrive' (castle scrolls in) → 'walk' → 'enter' → 'inside'
 let dragonBonk = 0;   // seconds left of the dragon's bonk wobble
 let shake = 0, scrollSpeed = 2.5, runPhase = 0, dragonPhase = 0, puffIn = 2, heartIn = 0;
 const pAnim = { sq: 0, sqV: 0 };
@@ -1323,8 +1331,16 @@ function animate(dt) {
   const ef = k => 1 - Math.exp(-k * dt);
 
   // world scroll speed (path, grass, scenery)
-  const targetScroll = st === 'title' ? 2.5 : (st === 'intro' || st === 'play') ? cfg.speed : 0;
-  scrollSpeed += (targetScroll - scrollSpeed) * ef(st === 'winning' ? 1.6 : 4);
+  if (st === 'winning' && endPhase === 'arrive') {
+    // constant braking so the gate stops exactly at CASTLE_WIN: v = sqrt(2·a·distance left)
+    const left = castle.position.x - CASTLE_WIN.x;
+    scrollSpeed = Math.min(cfg.speed, Math.max(0.35, Math.sqrt(2 * BRAKE * Math.max(0, left))));
+    castle.position.x = Math.max(CASTLE_WIN.x, castle.position.x - scrollSpeed * dt);
+    if (castle.position.x <= CASTLE_WIN.x + 1e-4) { scrollSpeed = 0; endPhase = 'walk'; }
+  } else {
+    const targetScroll = st === 'title' ? 2.5 : (st === 'intro' || st === 'play') ? cfg.speed : 0;
+    scrollSpeed += (targetScroll - scrollSpeed) * ef(4);
+  }
   pathTex.offset.x += scrollSpeed * dt / PATH_TILE;
   grassTex.offset.x += scrollSpeed * dt / GRASS_TILE;
   for (const s of scenery) {
@@ -1333,15 +1349,23 @@ function animate(dt) {
   }
 
   // princess position: home at x = 0; run in on intro, run to the castle on win
-  let pxTarget = 0, pzTarget = 0;
-  if (st === 'winning' || st === 'won') pxTarget = WIN_PRINCESS_X;
-  if (st === 'won' && game.stateTime > 0.8) pzTarget = GATE_Z + 0.3;
-  princessX += (pxTarget - princessX) * ef(st === 'intro' ? 3 : 2.2);
-  princessZ += (pzTarget - princessZ) * ef(1.5);
-  if (st === 'play') princessX = Math.abs(princessX) < 0.01 ? 0 : princessX * (1 - ef(6));
+  if (st === 'winning' && endPhase === 'walk' && !P.air) {
+    // walk (steady pace) to the gate; the gate swings open as she gets close
+    princessX = Math.min(CASTLE_WIN.x, princessX + WALK_SPEED * dt);
+    if (gateOpen === 0 && princessX > CASTLE_WIN.x - 3) { gateOpen = 0.001; sfx.gate(); }
+    if (princessX >= CASTLE_WIN.x) endPhase = 'enter';
+  } else if (st === 'winning' && endPhase === 'enter') {
+    // turn to the gate and walk in
+    princessZ = Math.max(GATE_Z - 0.6, princessZ - WALK_SPEED * 0.8 * dt);
+    if (princessZ <= GATE_Z - 0.6) { endPhase = 'inside'; setState('won'); }
+  } else if (st === 'intro') {
+    princessX += (0 - princessX) * ef(3);
+  } else if (st === 'play') {
+    princessX = Math.abs(princessX) < 0.01 ? 0 : princessX * (1 - ef(6));
+  }
 
   // dragon follows the chase tension (capped just behind her)
-  const dxTarget = st === 'title' ? -4.2 : (st === 'winning' || st === 'won') ? WIN_PRINCESS_X - 4
+  const dxTarget = st === 'title' ? -4.2 : (st === 'winning' || st === 'won') ? DRAGON_FAR_X + 0.6
     : lerp(DRAGON_FAR_X, DRAGON_NEAR_X, game.tension);
   dragonX += (dxTarget - dragonX) * ef(st === 'intro' ? 2.5 : EASE_RATE * 0.5);
 
@@ -1351,8 +1375,9 @@ function animate(dt) {
   pAnim.sqV += (-260 * pAnim.sq - 9 * pAnim.sqV) * dt;
   pAnim.sq += pAnim.sqV * dt;
   const air = P.air && (st === 'play' || st === 'winning');
-  const moving = st === 'title' || st === 'intro' || st === 'play' || (st === 'winning') || (st === 'won' && Math.abs(princessZ - pzTarget) > 0.05);
-  runPhase += dt * (moving ? 11 : 0);
+  const walking = st === 'winning' && (endPhase === 'walk' || endPhase === 'enter');
+  const moving = st === 'title' || st === 'intro' || st === 'play' || walking || (st === 'winning' && scrollSpeed > 0.2);
+  runPhase += dt * (walking ? 8 : moving ? 11 * Math.max(0.4, Math.min(1, scrollSpeed / Math.max(1, cfg.speed))) : 0);
   const sw = Math.sin(runPhase);
   const pr = princess;
   pr.root.position.set(princessX, (st === 'play' || st === 'winning' ? P.y : 0) + (!air && moving ? Math.abs(sw) * 0.05 : 0), princessZ);
@@ -1362,7 +1387,7 @@ function animate(dt) {
   if (air) {
     pr.legs[0].rotation.z = 0.7; pr.legs[1].rotation.z = -0.3;
     pr.arms[0].rotation.z = 2.4; pr.arms[1].rotation.z = 2.4;
-  } else if (st === 'won' && !moving) {
+  } else if (st === 'won') {
     pr.legs.forEach(l => { l.rotation.z *= 0.8; });
     pr.arms.forEach((a, i) => { a.rotation.z = 2.6 + Math.sin(now * 8 + i) * 0.25; });
   } else {
@@ -1370,18 +1395,19 @@ function animate(dt) {
     pr.arms[0].rotation.z = -sw * 0.7; pr.arms[1].rotation.z = sw * 0.7;
   }
   // she faces the run direction; turns toward the gate at the end
-  const faceY = st === 'won' && game.stateTime > 0.8 ? Math.PI / 2 : 0;
+  const faceY = endPhase === 'enter' || endPhase === 'inside' ? Math.PI / 2 : 0;
   pr.root.rotation.y += (faceY - pr.root.rotation.y) * ef(5);
   P.dizzy = Math.max(0, P.dizzy - dt);
   pr.dizzy.visible = P.dizzy > 0;
   pr.dizzy.rotation.y += dt * 8;
   pr.body.rotation.x = P.dizzy > 0 ? Math.sin(now * 18) * 0.15 * P.dizzy : 0;
   pr.dressMat.emissive.setRGB(P.dizzy > 0 ? 0.35 * (0.5 + 0.5 * Math.sin(now * 25)) * P.dizzy : 0, 0, 0);
-  pr.root.visible = !(st === 'won' && game.stateTime > 2.6);   // she's inside the castle
+  pr.root.visible = endPhase !== 'inside';                      // she's inside the castle
 
   // dragon: run cycle, flapping wings, wagging tail, leaning in with tension, puffs
   const dr = dragon;
-  dragonPhase += dt * (st === 'won' ? 4 : 9);
+  const dragonResting = st === 'won' || (st === 'winning' && scrollSpeed < 0.2);   // world stopped at the castle
+  dragonPhase += dt * (dragonResting ? 4 : 9);
   dragonBonk = Math.max(0, dragonBonk - dt);
   const bk = dragonBonk / 0.9;                                 // 1 → 0 over the bonk
   dr.root.position.set(dragonX - Math.sin(bk * Math.PI) * 0.6, 0, 0);
@@ -1390,7 +1416,7 @@ function animate(dt) {
   dr.root.rotation.y = -dragonFriendly * Math.PI / 2;         // turns to face us and wave
   dr.body.rotation.z = st === 'play' ? -game.tension * 0.2 : 0;
   dr.body.position.y = Math.abs(Math.sin(dragonPhase)) * 0.08;
-  dr.legs.forEach((l, i) => { l.rotation.z = Math.sin(dragonPhase + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * (st === 'won' ? 0.1 : 0.6); });
+  dr.legs.forEach((l, i) => { l.rotation.z = Math.sin(dragonPhase + (i % 2 ? Math.PI : 0) + (i > 1 ? Math.PI / 2 : 0)) * (dragonResting ? 0.1 : 0.6); });
   if (dragonFriendly > 0.5) dr.legs[0].rotation.z = 2.2 + Math.sin(now * 9) * 0.5;   // waving
   const flap = Math.sin(now * (st === 'won' ? 9 : 7));
   dr.wings.forEach(({ w, s }) => { w.rotation.x = s * (0.15 + flap * 0.45); });
@@ -1412,13 +1438,6 @@ function animate(dt) {
   }
 
   // castle: grows closer with progress; slides to the path for the finish
-  if (st === 'winning' || st === 'won') {
-    castle.position.lerp(CASTLE_WIN, ef(2));
-  } else {
-    castleProg += (clamp(game.score / cfg.goal, 0, 1) - castleProg) * ef(2);
-    _v.copy(CASTLE_FAR).lerp(CASTLE_NEAR, st === 'title' ? 0 : castleProg);
-    castle.position.lerp(_v, ef(3));
-  }
   if (gateOpen > 0) gateOpen = Math.min(1, gateOpen + dt / 1.2);
   gateDoors.forEach(({ hinge, side }) => { hinge.rotation.y = side * easeOutBack(gateOpen) * 1.5; });
 
@@ -1439,13 +1458,16 @@ function animate(dt) {
   }
 
   // camera: gentle sway, follows her to the castle, small shake on a bump
-  const ct = st === 'won' || st === 'winning' ? new THREE.Vector3(Math.max(1, princessX - 1.5), 1.8, -0.6) : new THREE.Vector3(1.0, 1.3, 0);
+  // once the world stops at the castle, frame the dragon (left) to the castle (right) in one shot
+  const atCastle = st === 'won' || (st === 'winning' && endPhase !== 'arrive');
+  const ct = atCastle ? new THREE.Vector3(1.3, 2.1, -1.0) : new THREE.Vector3(1.0, 1.3, 0);
+  endZoom += ((atCastle ? 1.5 : 1) - endZoom) * ef(1.5);
   camTarget.lerp(ct, ef(2));
   shake = Math.max(0, shake - dt);
   camera.position.set(
-    camTarget.x + CAM_OFFSET.x * camDist + Math.sin(now * 0.3) * 0.25 + (Math.random() - 0.5) * shake * 0.5,
-    camTarget.y + CAM_OFFSET.y * camDist + Math.sin(now * 0.23) * 0.12 + (Math.random() - 0.5) * shake * 0.5,
-    camTarget.z + CAM_OFFSET.z * camDist);
+    camTarget.x + CAM_OFFSET.x * camDist * endZoom + Math.sin(now * 0.3) * 0.25 + (Math.random() - 0.5) * shake * 0.5,
+    camTarget.y + CAM_OFFSET.y * camDist * endZoom + Math.sin(now * 0.23) * 0.12 + (Math.random() - 0.5) * shake * 0.5,
+    camTarget.z + CAM_OFFSET.z * camDist * endZoom);
   camera.lookAt(camTarget);
 }
 
@@ -1494,6 +1516,8 @@ window.__pd = {
     state: game.state, level: game.level, score: game.score, goal: LEVELS[game.level].goal, gems: game.gems,
     tension: +game.tension.toFixed(3), y: +P.y.toFixed(3), air: P.air, simTime: +game.simTime.toFixed(4),
     speed: LEVELS[game.level].speed, dragonX: +dragonX.toFixed(2),
+    endPhase, castleX: +castle.position.x.toFixed(3), castleVisible: castle.visible, scroll: +scrollSpeed.toFixed(3),
+    princessX: +princessX.toFixed(3), princessZ: +princessZ.toFixed(3), princessVisible: princess.root.visible,
     obstacles: obstacles.map(o => ({ type: o.type, x: +o.x.toFixed(3), tta: +(o.x / LEVELS[game.level].speed).toFixed(4), hit: o.hit, passed: o.passed, letter: o.letter, armed: o.armed })),
   }),
   debug: game.debug,
