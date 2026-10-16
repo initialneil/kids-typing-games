@@ -115,7 +115,7 @@ let audioCtx = null;
 function ensureAudio() {
   if (!AudioCtx) return false;
   if (!audioCtx) audioCtx = new AudioCtx();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume();   // 'suspended', or Safari's 'interrupted'
   return true;
 }
 // One enveloped oscillator note, optionally sliding from f1 to f2
@@ -145,6 +145,21 @@ function playWin()   { [523, 659, 784, 1047].forEach((f, i) => tone(f, null, 0.3
 // ─── Speech (a bonus — the game works fine without it) ──────────
 // A bare capital ("C") is read as "capital C"; lower-case it. Measured on macOS Samantha: lower-case
 // letters read as letter names (even "a"), while "ay" reads as "eye", so no phonetic respelling.
+// Speech can go silent for good after long play, a backgrounded tab or Mac sleep: the engine is
+// left paused, its queue gets stuck "speaking", or Chrome garbage-collects a queued utterance and
+// never finishes it. So keep recent utterances referenced and un-stick the engine before each line.
+const keepUtterances = [];
+let lastSpeechStart = 0;
+function unstickSpeech(s) {
+  if (s.paused) s.resume();
+  // nothing we say lasts 8 s: still busy after that means the queue is stuck
+  if ((s.speaking || s.pending) && performance.now() - lastSpeechStart > 8000) s.cancel();
+}
+function trackUtterance(u) {
+  u.onstart = () => { lastSpeechStart = performance.now(); };
+  keepUtterances.push(u);
+  if (keepUtterances.length > 20) keepUtterances.shift();
+}
 function speakableLetters(text) {
   return text.replace(/\b([A-Z])\b/g, ch => ch.toLowerCase());
 }
@@ -155,8 +170,10 @@ function say(text, interrupt) {
     const speak = () => {
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 0.9; u.pitch = 1.2; u.lang = 'en-US';
+      trackUtterance(u);
       window.speechSynthesis.speak(u);
     };
+    unstickSpeech(window.speechSynthesis);
     if (interrupt) {
       window.speechSynthesis.cancel();
       setTimeout(speak, 30);   // some browsers drop a speak() issued right after cancel()

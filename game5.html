@@ -247,7 +247,7 @@ function ensureAudio() {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume();   // 'suspended', or Safari's 'interrupted'
 }
 // A single oscillator note with a pitch glide and a quick envelope
 function tone(type, f0, f1, dur, vol, delay = 0) {
@@ -343,6 +343,21 @@ if (synth) {
 }
 // A bare capital ("C") is read as "capital C"; lower-case it. Measured on macOS Samantha: lower-case
 // letters read as letter names (even "a"), while "ay" reads as "eye", so no phonetic respelling.
+// Speech can go silent for good after long play, a backgrounded tab or Mac sleep: the engine is
+// left paused, its queue gets stuck "speaking", or Chrome garbage-collects a queued utterance and
+// never finishes it. So keep recent utterances referenced and un-stick the engine before each line.
+const keepUtterances = [];
+let lastSpeechStart = 0;
+function unstickSpeech(s) {
+  if (s.paused) s.resume();
+  // nothing we say lasts 8 s: still busy after that means the queue is stuck
+  if ((s.speaking || s.pending) && performance.now() - lastSpeechStart > 8000) s.cancel();
+}
+function trackUtterance(u) {
+  u.onstart = () => { lastSpeechStart = performance.now(); };
+  keepUtterances.push(u);
+  if (keepUtterances.length > 20) keepUtterances.shift();
+}
 function speakableLetters(text) {
   return text.replace(/\b([A-Z])\b/g, ch => ch.toLowerCase());
 }
@@ -351,12 +366,14 @@ function speak(text, interrupt = true) {
   if (!synth) return;
   text = speakableLetters(text);
   try {
+    unstickSpeech(synth);
     if (interrupt) synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = voice ? voice.lang : 'en-US';
     u.pitch = 1.2;
     u.rate = 0.95;
+    trackUtterance(u);
     synth.speak(u);
   } catch (e) { /* speech is a bonus; never break the game */ }
 }

@@ -179,7 +179,7 @@ let noiseBuf = null;
 function ensureAudio() {
   if (!AudioCtx) return false;
   if (!audioCtx) { try { audioCtx = new AudioCtx(); } catch (e) { return false; } }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if (audioCtx.state !== 'running') audioCtx.resume();   // 'suspended', or Safari's 'interrupted'
   return true;
 }
 
@@ -258,15 +258,32 @@ function pickVoice() {
 }
 if (synth) { pickVoice(); try { synth.onvoiceschanged = pickVoice; } catch (e) {} }
 
+// Speech can go silent for good after long play, a backgrounded tab or Mac sleep: the engine is
+// left paused, its queue gets stuck "speaking", or Chrome garbage-collects a queued utterance and
+// never finishes it. So keep recent utterances referenced and un-stick the engine before each line.
+const keepUtterances = [];
+let lastSpeechStart = 0;
+function unstickSpeech(s) {
+  if (s.paused) s.resume();
+  // nothing we say lasts 8 s: still busy after that means the queue is stuck
+  if ((s.speaking || s.pending) && performance.now() - lastSpeechStart > 8000) s.cancel();
+}
+function trackUtterance(u) {
+  u.onstart = () => { lastSpeechStart = performance.now(); };
+  keepUtterances.push(u);
+  if (keepUtterances.length > 20) keepUtterances.shift();
+}
 function say(text, opts = {}) {
   if (!synth || typeof SpeechSynthesisUtterance === 'undefined') return;
   try {
+    unstickSpeech(synth);
     if (opts.interrupt) synth.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang  = 'en-US';
     if (voice) u.voice = voice;
     u.pitch = opts.pitch || 1.2;
     u.rate  = opts.rate  || 1.0;
+    trackUtterance(u);
     synth.speak(u);
   } catch (e) { /* speech is a bonus, never an error */ }
 }
